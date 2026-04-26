@@ -1,104 +1,209 @@
-# SYNC ENGINE 🚀
+# SYNC Engine
 
-![Python Version](https://shields.io)
-![License](https://shields.io)
-![Build Status](https://shields.io)
-![Stage](https://shields.io)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-MP2%2B-green)
+![Status](https://img.shields.io/badge/status-experimental-orange)
+![Tests](https://img.shields.io/badge/tests-partial-yellow)
+![CI](https://img.shields.io/badge/CI-not%20configured-lightgrey)
+![Style](https://img.shields.io/badge/style-deterministic-informational)
 
-**Sync Engine** é um ecossistema de sincronização determinística e inteligente escrito em Python. O projeto foi desenhado para ser idempotente, garantindo que o estado final entre a origem e o destino seja sempre coerente, sem redundâncias e com integridade verificada via SHA256.
+![PT-BR](./README.pt-br.md)
 
----
-
-## 📌 Índice
-
-1. [Sobre o Projeto](#sobre-o-projeto)
-2. [Estágio de Desenvolvimento](#estágio-de-desenvolvimento)
-3. [O Formato .syncdownload](#o-formato-syncdownload)
-   - [Sintaxe e Exemplo](#sintaxe-e-exemplo)
-4. [Arquitetura do Engine](#arquitetura-do-engine)
-5. [Diretrizes de Contribuição](#diretrizes-de-contribuição)
-6. [Licença](#licença)
+A deterministic synchronization engine based on **state reconciliation**, **cryptographic validation**, and an **idempotent pipeline**. The project orchestrates download, cache, integrity, and post-processing under strict and predictable rules.
 
 ---
 
-## 📖 Sobre o Projeto
+## Index
 
-O objetivo principal deste projeto é orquestrar pipelines de download e sincronização complexos através de uma interface unificada. Ao contrário de scripts de download simples, o Sync Engine gerencia:
-
-- **Abstração de Origens:** Interface única para GitHub, GitLab e APIs oficiais.
-- **Reconciliação de Cache:** Inteligência para evitar tráfego de rede desnecessário comparando cache local vs. destino.
-- **Tratamento de Containers:** Descompactação automática (.zip, .tar.gz) com extração seletiva de artefatos.
-- **Extensibilidade:** Suporte a subscripts embutidos para ações em fases específicas do pipeline.
-
-## 🛠 Estágio de Desenvolvimento
-
-Atualmente, o projeto encontra-se em **Fase de Teste (Beta)**.
-
-- **Estabilidade:** O core de parsing e o pipeline de download estão funcionais.
-- **O que esperar:** Podem ocorrer ajustes na DSL de resolução de URLs e refinamentos no tratamento de erros de scripts externos.
-- **Uso Recomendado:** Ambientes de staging ou para automação de ferramentas de infraestrutura que exigem versionamento rígido de binários.
+- [Overview](#overview)
+- [Project Status](#project-status)
+- [Architecture](#architecture)
+- [`.syncdownload` Format](#syncdownload-format)
+- [Design Principles](#design-principles)
+- [Best Practices](#best-practices)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
-## 📝 O Formato .syncdownload
+## Overview
 
-O coração do processamento individual é o arquivo `.syncdownload`. Ele é um arquivo normativo que define a origem, a identidade e o comportamento de cada artefato.
+**SYNC Engine** addresses artifact synchronization with focus on:
 
-### Sintaxe Curta
+- Determinism (same input → same final state)
+- Integrity (SHA256/MD5 hash as source of truth)
+- Efficiency (avoids downloads via cache ↔ destination reconciliation)
+- Controlled extensibility (DSL + isolated subscripts)
+- Synchronous execution
 
-```text
-Linha 1: URL ou DSL de origem (ex: github|user/repo)
-Linha 2: Hash fixo (Opcional - fixa a versão)
-Linha 3: Nome final do arquivo (Opcional)
-Linha 4: Fonte de hash remoto (URL/DSL para validação dinâmica)
-Linha 5: Vetor JSON para extração de containers (Ex: [["bin/app.exe", "app.exe"]])
-Linha 6+: Blocos de Script (>>>py, >>>sh)
+This is not a simple downloader: it is an **incremental decision system** with explicit semantics.
+
+---
+
+## Project Status
+
+> ⚠️ **Current phase: experimental / functional validation**
+
+- Internal API still subject to change
+- Partial test coverage
+- Core contracts already defined (RCF of `.syncdownload`)
+- Current focus: pipeline robustness and state coherence
+
+Production usage is **not recommended** without independent validation.
+
+---
+
+## Architecture
+
+```
+sync/
+├── main.py
+├── commons.py
+├── core/
+│   ├── syncdownload.parser.py
+│   ├── syncdownload.processor.py
+│   ├── download_manager.py
+│   ├── cache_validation.py
+│   ├── cleanup.py
+│   ├── file_operations.py
+│   ├── metadata.py
+│   └── retry.py
+└── utils/
+    ├── progress.py
+    ├── naming.py
+    ├── dsl.py
+    └── logging.py
 ```
 
-### Exemplo Prático
+**Separation of responsibilities is mandatory.**
+No module should invade another module’s domain.
 
-```text
-https://example.com
-8cf927... (sha256)
-ferramenta_v1.exe
-https://example.com
-[["bin/tool.exe", "ferramenta_v1.exe"]]
->>>py,end
-print("Download e extração concluídos com sucesso!")
+---
+
+## `.syncdownload` Format
+
+A declarative file that defines **source, version, integrity, and behavior**.
+
+### Minimal structure
+
+```
+<url or DSL>
+[hash]
+[final_name]
+[remote_hash]
+[files_in_container]
+>>>ext[,phase]
+optional script
 ```
 
----
+### Simple example
 
-## 🏗 Arquitetura do Engine
+```
+https://example.com/app.zip
+d41d8cd98f00b204e9800998ecf8427e
+app.zip
+```
 
-O projeto é modularizado para evitar efeitos colaterais e garantir baixo acoplamento:
+### Capabilities
 
-- **`core/`**: Contém o cérebro do projeto (Parsers, Processadores de Pipeline, Gerenciador de Cache).
-- **`utils/`**: Utilitários de interface (Rich progress bar), Naming canonicalization e o motor DSL.
-- **`commons.py`**: Definições globais e estruturas compartilhadas.
+- Fixed version (line 2) or dynamic version (line 4)
+- DSL-based resolution (`${...}`)
+- Selective extraction from containers (.zip, .tar.gz, etc.)
+- Subscripts with controlled phases (`start`, `end`, etc.)
 
-### Invariantes Críticas
+### Notes
 
-- **Integridade:** A referência de sucesso é sempre o hash do artefato final, não do container.
-- **Determinismo:** O sistema deve chegar ao mesmo resultado final, independentemente de quantas vezes for executado.
-
----
-
-## 🤝 Contribuição e Estilo
-
-Se você deseja contribuir, mantenha em mente:
-
-1. **Pequenas Funções:** Valorizamos funções especializadas e reutilizáveis.
-2. **Sem Side-effects:** Evite hardcoding de paths ou configurações. Use os módulos `commons` e `metadata`.
-3. **Estilo de Código:** Seguimos o PEP 8 com foco em legibilidade. Comentários devem explicar o "porquê", não o "quê".
-4. **Preservação de Estilo:** Mantenha a imutabilidade das estruturas de dados sempre que possível durante o parsing.
+- Line order is **semantic and mandatory**
+- Encoding must be UTF-8
+- Scripts are **isolated and do not interfere with the core**
 
 ---
 
-## ⚖️ Licença
+## Design Principles
 
-Este projeto é distribuído sob a licença **MPL 2.0 (Mozilla Public License 2.0)**. Isso permite o uso em projetos proprietários, desde que alterações no código-fonte do Sync Engine sejam disponibilizadas publicamente.
+### Technical
+
+- Separation: **HEAD ≠ GET**
+- Hash as authority (not metadata)
+- Hybrid cache (memory + persistent)
+- Retry only for transient failures
+
+### Execution
+
+- Idempotent
+- Deterministic
+- Ordered
+- No hidden side effects
+
+### Critical rules
+
+- Never rely solely on cache
+- Never infer version from metadata
+- Never treat a container as the final artifact
 
 ---
 
-**FIM DO CONTRATO** (Simulado para fins de README)
+## Best Practices
+
+### Code
+
+- Small, specialized functions
+- No logic duplication
+- No hardcoding
+- Prefer immutability
+
+### Integration
+
+- Use `download_manager` for network I/O
+- Use `utils.dsl` for any dynamic resolution
+- Centralize naming in `utils.naming`
+
+### Avoid
+
+- HTML parsing when an API exists
+- Coupling between core modules
+- Non-deterministic heuristics
+
+---
+
+## Contributing
+
+### Requirements
+
+- Strict adherence to project contracts
+- Preserve **deterministic and diff-friendly** style
+- Do not introduce implicit side effects
+
+### Suggested workflow
+
+1. Fork
+2. Create isolated branch (`feature/...` or `fix/...`)
+3. Implement minimal required changes
+4. Test locally with multiple scenarios
+5. Submit a concise Pull Request
+
+### Acceptance criteria
+
+- Consistency with system invariants
+- No behavioral regression
+- Structural clarity
+
+---
+
+## License
+
+Distributed under the **MP2+** license.
+
+---
+
+## Objective
+
+Provide a **reliable and predictable engine** for artifact synchronization, with:
+
+- Explicit version control
+- Guaranteed integrity
+- Transparent and auditable pipeline
+
+Without compromising operational simplicity.
+
+---
