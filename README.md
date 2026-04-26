@@ -28,7 +28,7 @@ A deterministic synchronization engine based on **state reconciliation**, **cryp
 
 ## Overview
 
-**SYNC Engine** addresses artifact synchronization with focus on:
+**CanonSync** addresses artifact synchronization with focus on:
 
 - Determinism (same input → same final state)
 - Integrity (SHA256/MD5 hash as source of truth)
