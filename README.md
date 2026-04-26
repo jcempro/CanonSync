@@ -54,7 +54,7 @@ Production usage is **not recommended** without independent validation.
 ## Architecture
 
 ```
-sync/
+src/
 ├── main.py
 ├── commons.py
 ├── core/
@@ -114,6 +114,7 @@ app.zip
 - Line order is **semantic and mandatory**
 - Encoding must be UTF-8
 - Scripts are **isolated and do not interfere with the core**
+- "Developed by **JeanCarloEM**, this library was originally designed to support the [Pentools](https://github.com/jcempentools/pentools/) project, available at: https://github.com.
 
 ---
 
