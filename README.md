@@ -7,8 +7,6 @@
 ![CI](https://img.shields.io/badge/CI-not%20configured-lightgrey)
 ![Style](https://img.shields.io/badge/style-deterministic-informational)
 
-![PT-BR](./README.pt-br.md)
-
 A deterministic synchronization engine based on **state reconciliation**, **cryptographic validation**, and an **idempotent pipeline**. The project orchestrates download, cache, integrity, and post-processing under strict and predictable rules.
 
 ---
