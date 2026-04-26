@@ -12,6 +12,7 @@
 *.syncado
 *.sha256
 __pycache__
+.ruff_cache
 
 # === Arquivos Compactados ===
 *.zip
