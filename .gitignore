@@ -1,0 +1,22 @@
+# === Sistema e Metadados ===
+/System Volume Information/
+*.log
+*.tmp
+
+# === Imagens de Disco e Instaladores ===
+*.iso
+*.img
+*.wim
+*.msi
+*.exe
+*.syncado
+*.sha256
+__pycache__
+
+# === Arquivos Compactados ===
+*.zip
+*.7z
+
+# === Exceções (Não ignorar) ===
+!.gitkeep
+!.gitignore
