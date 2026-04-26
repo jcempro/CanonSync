@@ -6,12 +6,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 """
-SYNC ENGINE
+CanonSync - Sync Engine
 PARSER SYNCDOWNLOAD | BIBLIOTECA
 
 ---
-Título: /jcempentools/Sync/
-Descrição: Sync Engine unifies complex synchronization pipelines through: Abstraction (unified API interface), Caching (intelligent reconciliation), Containers (automated selective extraction), and Extensibility (phase-based subscripting).
+Título: CanonSync - Sync Engine
+Descrição: Sync Engine unifies complex synchronization pipelines through:
+           Abstraction (unified API interface), Caching (intelligent
+           reconciliation), Containers (automated selective extraction),
+           and Extensibility (phase-based subscripting).
 Autor: [jcempentools], [JeanCarloEM]
 Contato: [https://github.com/jcempentools/sync/]
 License: MPL 2.0
@@ -36,7 +39,7 @@ Arquitetura SYNC:
 sync/
 │
 ├── main.py                        # Orquestração do pipeline (cleanup → download → cópia → retry → pós)
-├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas 
+├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas
 │                                    entre dois ou mais scripts
 ├── core/
 │   ├── syncdownload.parser.py     # Parsing .syncdownload, resolução de URL e nome determinístico
@@ -117,14 +120,15 @@ Restrições:
 import hashlib
 import os
 from pathlib import Path
-import re
 
 import xxhash
-
-from sync_local.commons import *
-from sync_local.utils.naming import normalize_product_name, is_same_product
-from sync_local.utils.logging import show_message
-from sync_local.utils.progress import create_progress
+from CanonSync.src.commons import *
+from CanonSync.src.utils.logging import show_message
+from CanonSync.src.utils.naming import (
+    is_same_product,
+    normalize_product_name,
+)
+from CanonSync.src.utils.progress import create_progress
 
 # VARIÁVEIS GLOBAIS
 
@@ -133,30 +137,31 @@ hash_cache = {}
 
 # MAPEAMENTO DE FUNÇÕES
 
+
 def is_cached_file_valid(path, expected_hash):
     if not os.path.exists(path):
         return False
 
     ext = os.path.splitext(path)[1].lower()
-    sha_file = path + ".sha256"
-    sync_file = path + ".syncado"
+    sha_file = path + '.sha256'
+    sync_file = path + '.syncado'
 
     # =========================================================
     # 1. HASH EXTERNO (linha 2) → prioridade máxima
     # =========================================================
     if expected_hash:
-        current_hash = hash_file(path, "Cache")
+        current_hash = hash_file(path, 'Cache')
         return current_hash == expected_hash.lower()
 
     # =========================================================
     # 2. ARQUIVOS DE IMAGEM → USAR SHA256 SE EXISTIR
     # =========================================================
-    if ext in (".iso", ".img") and os.path.exists(sha_file):
+    if ext in ('.iso', '.img') and os.path.exists(sha_file):
         try:
-            with open(sha_file, "r", encoding="utf-8") as f:
+            with open(sha_file, 'r', encoding='utf-8') as f:
                 saved_hash = f.readline().split()[0]
 
-            current_hash = hash_file(path, "Cache")
+            current_hash = hash_file(path, 'Cache')
             return current_hash == saved_hash.lower()
         except:
             return False
@@ -166,7 +171,7 @@ def is_cached_file_valid(path, expected_hash):
     # =========================================================
     if os.path.exists(sync_file):
         try:
-            with open(sync_file, "r", encoding="utf-8") as f:
+            with open(sync_file, 'r', encoding='utf-8') as f:
                 stored_name = f.read().strip()
 
             current_name = os.path.basename(path)
@@ -187,6 +192,7 @@ def is_cached_file_valid(path, expected_hash):
     # =========================================================
     return os.path.getsize(path) > 0
 
+
 def hash_file(filename, label):
     """
     Descrição: Calcula hash (xxhash ou SHA256) de arquivo com cache.
@@ -195,10 +201,12 @@ def hash_file(filename, label):
     - label (str): Rótulo para exibição.
     Retorno:
     - str|None: Hash calculado ou None em erro.
-    """    
-    filename = str(filename) if isinstance(filename, Path) else filename
+    """
+    filename = (
+        str(filename) if isinstance(filename, Path) else filename
+    )
     if os.path.isdir(filename):
-        return 1        
+        return 1
     cached_hash = hash_cache.get(filename)
     if cached_hash:
         return cached_hash
@@ -206,12 +214,18 @@ def hash_file(filename, label):
         file_size = os.path.getsize(filename)
         with open(filename, 'rb') as file:
             # Detecta se deve usar SHA256 (quando houver metadata ou validação crítica)
-            use_sha256 = filename.lower().endswith((".iso", ".img")) or os.path.exists(filename + ".sha256")
+            use_sha256 = filename.lower().endswith(
+                ('.iso', '.img')
+            ) or os.path.exists(filename + '.sha256')
 
-            hasher = hashlib.sha256() if use_sha256 else xxhash.xxh3_64()
-            file_name = os.path.basename(filename)  
-            with create_progress("bold yellow") as progress:
-                task = progress.add_task("", total=file_size, label=label, name=file_name)
+            hasher = (
+                hashlib.sha256() if use_sha256 else xxhash.xxh3_64()
+            )
+            file_name = os.path.basename(filename)
+            with create_progress('bold yellow') as progress:
+                task = progress.add_task(
+                    '', total=file_size, label=label, name=file_name
+                )
                 while chunk := file.read(65536):
                     hasher.update(chunk)
                     progress.update(task, advance=len(chunk))
@@ -219,5 +233,5 @@ def hash_file(filename, label):
         hash_cache[filename] = res
         return res.lower()
     except Exception as e:
-        show_message(f"Erro ao calcular hash de {filename}: {e}", "e")
+        show_message(f'Erro ao calcular hash de {filename}: {e}', 'e')
         return None

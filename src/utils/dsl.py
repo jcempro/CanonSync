@@ -6,12 +6,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 """
-SYNC ENGINE
+CanonSync - Sync Engine
 PARSER SYNCDOWNLOAD | BIBLIOTECA
 
 ---
-Título: /jcempentools/Sync/
-Descrição: Sync Engine unifies complex synchronization pipelines through: Abstraction (unified API interface), Caching (intelligent reconciliation), Containers (automated selective extraction), and Extensibility (phase-based subscripting).
+Título: CanonSync - Sync Engine
+Descrição: Sync Engine unifies complex synchronization pipelines through:
+           Abstraction (unified API interface), Caching (intelligent
+           reconciliation), Containers (automated selective extraction),
+           and Extensibility (phase-based subscripting).
 Autor: [jcempentools], [JeanCarloEM]
 Contato: [https://github.com/jcempentools/sync/]
 License: MPL 2.0
@@ -36,7 +39,7 @@ Arquitetura SYNC:
 sync/
 │
 ├── main.py                        # Orquestração do pipeline (cleanup → download → cópia → retry → pós)
-├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas 
+├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas
 │                                    entre dois ou mais scripts
 ├── core/
 │   ├── syncdownload.parser.py     # Parsing .syncdownload, resolução de URL e nome determinístico
@@ -187,12 +190,11 @@ Raises: Nenhuma exceção é propagada externamente. Falhas retornam `None`.
 # IMPORTS
 import json
 import re
-
 import time
 import urllib
 
-from sync_local.commons import *
-from sync_local.core.download_manager import http_open   
+from CanonSync.src.commons import *
+from CanonSync.src.core.download_manager import http_open
 
 # VARIÁVEIS GLOBAIS
 
@@ -202,6 +204,7 @@ PARSER_CACHE_TTL = 60  # segundos
 
 # MAPEAMENTO DE FUNÇÕES
 
+
 def resolve_parser_expression(expr, context_name=None):
     """
     Resolve expressão completa:
@@ -209,13 +212,13 @@ def resolve_parser_expression(expr, context_name=None):
     Parâmetros:
     - expr (str): Expressão DSL.
     Retorno:
-    - any: Resultado resolvido.    
+    - any: Resultado resolvido.
     """
 
     url = extract_parser_url(expr)
 
     if not url:
-        raise Exception("Parser DSL: URL inválida")
+        raise Exception('Parser DSL: URL inválida')
 
     # extrai path após }
     path_match = re.search(r'\}\.(.+)$', expr)
@@ -229,14 +232,16 @@ def resolve_parser_expression(expr, context_name=None):
 
     return resolve_data_path(data, path, context_name=context_name)
 
+
 def resolve_if_dsl(value, context=None):
     """
     Resolve valor caso seja expressão DSL (${...})
     Mantém compatibilidade total com strings normais
     """
-    if isinstance(value, str) and "${" in value:
+    if isinstance(value, str) and '${' in value:
         return resolve_parser_expression(value, context_name=context)
     return value
+
 
 def has_parser_expression(value):
     """has_parser_expression(value)
@@ -245,10 +250,12 @@ def has_parser_expression(value):
     - value (str): Valor a verificar.
     Retorno:
     - bool: True se contém expressão.
-    """    
+    """
     if not value:
         return False
-    return bool(re.search(r'\$\{\s*["\']https?://[^"\']+["\']\s*\}', value))
+    return bool(
+        re.search(r'\$\{\s*["\']https?://[^"\']+["\']\s*\}', value)
+    )
 
 
 def extract_parser_url(value):
@@ -264,37 +271,43 @@ def extract_parser_url(value):
     m = re.search(r'\$\{\s*["\'](https?://[^"\']+)["\']\s*\}', value)
     return m.group(1) if m else None
 
+
 def fetch_and_parse(url):
     """
     Descrição: Fetch + parse automático (JSON/YAML fallback JSON only)
     Parâmetros:
     - url (str): URL de origem.
     Retorno:
-    - dict: Dados parseados    
+    - dict: Dados parseados
     """
 
     cached = _parser_cache_get(url)
     if cached is not None:
-        return cached    
+        return cached
 
-    req = urllib.request.Request(url, headers={"User-Agent": "sync-engine"})
+    req = urllib.request.Request(
+        url, headers={'User-Agent': 'sync-engine'}
+    )
 
     with http_open(req) as response:
         raw = response.read()
 
-        content_type = response.headers.get("Content-Type", "").lower()
+        content_type = response.headers.get(
+            'Content-Type', ''
+        ).lower()
 
-        if "json" in content_type:
+        if 'json' in content_type:
             data = json.loads(raw.decode())
         else:
             # fallback seguro → tenta JSON
             try:
                 data = json.loads(raw.decode())
             except Exception:
-                raise Exception("Parser DSL: formato não suportado")
+                raise Exception('Parser DSL: formato não suportado')
 
     _parser_cache_set(url, data)
     return data
+
 
 def resolve_data_path(obj, path, context_name=None):
     """
@@ -312,7 +325,7 @@ def resolve_data_path(obj, path, context_name=None):
         m = re.match(r'([a-zA-Z0-9_\-]+)(\[(.*?)\])?', token)
 
         if not m:
-            raise Exception(f"Parser DSL inválido: {token}")
+            raise Exception(f'Parser DSL inválido: {token}')
 
         key = m.group(1)
         selector = m.group(3)  # conteúdo dentro []
@@ -342,7 +355,7 @@ def resolve_data_path(obj, path, context_name=None):
 
         else:
             raise Exception(
-                f"Parser DSL: estrutura inválida (esperado dict/list) | origem: {context_name}"
+                f'Parser DSL: estrutura inválida (esperado dict/list) | origem: {context_name}'
             )
 
         # --- sem seletor ---
@@ -352,13 +365,17 @@ def resolve_data_path(obj, path, context_name=None):
         # --- índice numérico ---
         if re.match(r'^\d+$', selector):
             if not isinstance(current, list):
-                raise Exception("Parser DSL: índice aplicado em estrutura não-lista")
+                raise Exception(
+                    'Parser DSL: índice aplicado em estrutura não-lista'
+                )
 
             current = current[int(selector)]
             continue
 
         # --- filtro estilo [@campo="valor"] ---
-        m_filter = re.match(r'@([a-zA-Z0-9_\-]+)\s*=\s*["\']([^"\']+)["\']', selector)
+        m_filter = re.match(
+            r'@([a-zA-Z0-9_\-]+)\s*=\s*["\']([^"\']+)["\']', selector
+        )
 
         if m_filter:
             attr = m_filter.group(1)
@@ -369,7 +386,9 @@ def resolve_data_path(obj, path, context_name=None):
                 current = [current]
 
             if not isinstance(current, list):
-                raise Exception("Parser DSL: filtro aplicado em estrutura não-lista")
+                raise Exception(
+                    'Parser DSL: filtro aplicado em estrutura não-lista'
+                )
 
             match_item = None
 
@@ -383,14 +402,17 @@ def resolve_data_path(obj, path, context_name=None):
                         break
 
             if match_item is None:
-                raise Exception(f"Parser DSL: nenhum match para {attr}={value}")
+                raise Exception(
+                    f'Parser DSL: nenhum match para {attr}={value}'
+                )
 
             current = match_item
             continue
 
-        raise Exception(f"Parser DSL: seletor inválido [{selector}]")
+        raise Exception(f'Parser DSL: seletor inválido [{selector}]')
 
     return current
+
 
 def _parser_cache_get(url):
     """_parser_cache_get(url)
@@ -399,7 +421,7 @@ def _parser_cache_get(url):
     - url (str): URL base.
     Retorno:
     - any: Dados em cache ou None.
-    """    
+    """
     entry = __PARSER_CACHE.get(url)
     if not entry:
         return None
@@ -409,6 +431,7 @@ def _parser_cache_get(url):
         return None
 
     return data
+
 
 def _parser_cache_set(url, data):
     """_parser_cache_set(url, data)
@@ -421,6 +444,7 @@ def _parser_cache_set(url, data):
     """
     __PARSER_CACHE[url] = (time.time(), data)
 
+
 def is_binary_content(headers):
     """
     Descrição: Verifica se conteúdo é binário.
@@ -428,7 +452,6 @@ def is_binary_content(headers):
     - headers (dict): Headers HTTP.
     Retorno:
     - bool: True se binário.
-    """    
-    ct = headers.get("Content-Type", "").lower()
-    return "text/html" not in ct 
-
+    """
+    ct = headers.get('Content-Type', '').lower()
+    return 'text/html' not in ct

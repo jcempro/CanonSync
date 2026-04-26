@@ -6,12 +6,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 """
-SYNC ENGINE
+CanonSync - Sync Engine
 PARSER SYNCDOWNLOAD | BIBLIOTECA
 
 ---
-Título: /jcempentools/Sync/
-Descrição: Sync Engine unifies complex synchronization pipelines through: Abstraction (unified API interface), Caching (intelligent reconciliation), Containers (automated selective extraction), and Extensibility (phase-based subscripting).
+Título: CanonSync - Sync Engine
+Descrição: Sync Engine unifies complex synchronization pipelines through:
+           Abstraction (unified API interface), Caching (intelligent
+           reconciliation), Containers (automated selective extraction),
+           and Extensibility (phase-based subscripting).
 Autor: [jcempentools], [JeanCarloEM]
 Contato: [https://github.com/jcempentools/sync/]
 License: MPL 2.0
@@ -36,7 +39,7 @@ Arquitetura SYNC:
 sync/
 │
 ├── main.py                        # Orquestração do pipeline (cleanup → download → cópia → retry → pós)
-├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas 
+├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas
 │                                    entre dois ou mais scripts
 ├── core/
 │   ├── syncdownload.parser.py     # Parsing .syncdownload, resolução de URL e nome determinístico
@@ -119,39 +122,44 @@ import os
 import subprocess
 import tempfile
 
-from sync_local.commons import *
-from sync_local.utils.logging import get_op_icon, show_message
-from sync_local.core.file_operations import _resolve_effective_remote_name
-from sync_local.utils.progress import create_progress
-from sync_local.core.cache_validation import hash_file
+from CanonSync.src.commons import *
+from CanonSync.src.core.cache_validation import hash_file
+from CanonSync.src.core.file_operations import (
+    _resolve_effective_remote_name,
+)
+from CanonSync.src.utils.logging import get_op_icon, show_message
+from CanonSync.src.utils.progress import create_progress
 
 # VARIÁVEIS GLOBAIS
 # (usa commons)
 
 # MAPEAMENTO DE FUNÇÕES
 
+
 def generate_sync_metadata(final_dest_path, url):
     try:
-        show_message(f"Gerando arquivos auxiliares: {os.path.basename(final_dest_path)}", "d")
+        show_message(
+            f'Gerando arquivos auxiliares: {os.path.basename(final_dest_path)}',
+            'd',
+        )
 
         ext = os.path.splitext(final_dest_path)[1].lower()
 
         # =========================================================
         # 1. SHA256 → SOMENTE PARA IMAGENS
         # =========================================================
-        if ext in (".iso", ".img"):
+        if ext in ('.iso', '.img'):
             sha256_hash = hashlib.sha256()
 
             total_size = os.path.getsize(final_dest_path)
 
-            with open(final_dest_path, "rb") as f:
-                with create_progress("bold yellow") as progress:
-
+            with open(final_dest_path, 'rb') as f:
+                with create_progress('bold yellow') as progress:
                     task = progress.add_task(
-                        "",
+                        '',
                         total=total_size,
                         name=os.path.basename(final_dest_path),
-                         op=get_op_icon("download")
+                        op=get_op_icon('download'),
                     )
 
                     while True:
@@ -163,10 +171,12 @@ def generate_sync_metadata(final_dest_path, url):
                         progress.update(task, advance=len(chunk))
 
             filename_only = os.path.basename(final_dest_path)
-            sha_line = f"{sha256_hash.hexdigest()}  {filename_only}"
+            sha_line = f'{sha256_hash.hexdigest()}  {filename_only}'
 
-            with open(final_dest_path + ".sha256", "w", encoding="utf-8") as f:
-                f.write(sha_line + "\n")
+            with open(
+                final_dest_path + '.sha256', 'w', encoding='utf-8'
+            ) as f:
+                f.write(sha_line + '\n')
 
         # =========================================================
         # 2. .syncado → SEMPRE
@@ -176,16 +186,19 @@ def generate_sync_metadata(final_dest_path, url):
         original_name = None
 
         if isinstance(original_info, dict):
-            original_name = original_info.get("name")
+            original_name = original_info.get('name')
         elif isinstance(original_info, str):
             original_name = original_info
 
         if original_name:
-            with open(final_dest_path + ".syncado", "w", encoding="utf-8") as f:
+            with open(
+                final_dest_path + '.syncado', 'w', encoding='utf-8'
+            ) as f:
                 f.write(str(original_name))
 
     except Exception as e:
-        show_message(f"Erro ao gerar arquivos auxiliares: {e}", "w")
+        show_message(f'Erro ao gerar arquivos auxiliares: {e}', 'w')
+
 
 def manage_sync_metadata(final_dest_path, url, expected_hash):
     """
@@ -202,31 +215,31 @@ def manage_sync_metadata(final_dest_path, url, expected_hash):
     - url (str): URL do recurso.
     - expected_hash (str|None): Hash esperado.
     Retorno:
-    - bool: True se precisa baixar.    
+    - bool: True se precisa baixar.
     """
 
-    sha_file = final_dest_path + ".sha256"
-    sync_file = final_dest_path + ".syncado"
+    sha_file = final_dest_path + '.sha256'
+    sync_file = final_dest_path + '.syncado'
 
     # =========================================================
     # 1. ARQUIVO NÃO EXISTE → DOWNLOAD
     # =========================================================
     if not os.path.exists(final_dest_path):
-        show_message("Arquivo não existe → download necessário", "d")
+        show_message('Arquivo não existe → download necessário', 'd')
         return True
 
     # =========================================================
     # 2. SEM .syncado → NÃO SABE QUAL VERSÃO → DOWNLOAD
     # =========================================================
     if not os.path.exists(sync_file):
-        show_message("Sem .syncado → download necessário", "d")
+        show_message('Sem .syncado → download necessário', 'd')
         return True
 
     try:
         # =====================================================
         # 3. COMPARAÇÃO DE NOME (VERSÃO)
         # =====================================================
-        with open(sync_file, "r", encoding="utf-8") as f:
+        with open(sync_file, 'r', encoding='utf-8') as f:
             stored_name = f.read().strip()
 
         current_info = _resolve_effective_remote_name(url)
@@ -234,84 +247,91 @@ def manage_sync_metadata(final_dest_path, url, expected_hash):
         current_name = None
 
         if isinstance(current_info, dict):
-            current_name = current_info.get("name")
+            current_name = current_info.get('name')
         elif isinstance(current_info, str):
             current_name = current_info
 
         if not current_name:
-            show_message("Não foi possível resolver nome atual → download", "w")
+            show_message(
+                'Não foi possível resolver nome atual → download', 'w'
+            )
             return True
 
         if stored_name.lower() != current_name.lower():
             show_message(
-                f"Novo release detectado: {stored_name} -> {current_name}",
-                "i"
+                f'Novo release detectado: {stored_name} -> {current_name}',
+                'i',
             )
             return True
-        
-        show_message(f"Mesmo release detectado: {current_name}", "d")
+
+        show_message(f'Mesmo release detectado: {current_name}', 'd')
 
         # =====================================================
         # 4. VALIDAÇÃO DE HASH EXTERNO (linha 2 do .syncdownload)
         # =====================================================
         if expected_hash:
-            current_hash = hash_file(final_dest_path, "Destino")
+            current_hash = hash_file(final_dest_path, 'Destino')
 
             if current_hash == expected_hash.lower():
                 show_message(
-                    f"Hash externo válido (sem download): {os.path.basename(final_dest_path)}",
-                    "k"
+                    f'Hash externo válido (sem download): {os.path.basename(final_dest_path)}',
+                    'k',
                 )
                 return False
 
             show_message(
-                f"Hash externo divergente → download necessário",
-                "w"
+                'Hash externo divergente → download necessário', 'w'
             )
-            return True        
+            return True
 
         # =====================================================
         # 5. VALIDAÇÃO DE HASH LOCAL (.sha256)
         # =====================================================
-        if not os.path.exists(sha_file):            
-            show_message("Sem .sha256, somente .syncado presente → reprocessamento obrigatório", "d")               
+        if not os.path.exists(sha_file):
+            show_message(
+                'Sem .sha256, somente .syncado presente → reprocessamento obrigatório',
+                'd',
+            )
             return True
 
-        with open(sha_file, "r", encoding="utf-8") as f:
+        with open(sha_file, 'r', encoding='utf-8') as f:
             line = f.readline().strip()
             saved_hash = line.split()[0] if line else None
 
         if not saved_hash:
-            show_message("Hash inválido no .sha256 → download", "w")
+            show_message('Hash inválido no .sha256 → download', 'w')
             return True
 
-        current_hash = hash_file(final_dest_path, "Destino")
+        current_hash = hash_file(final_dest_path, 'Destino')
 
         if current_hash == saved_hash:
             show_message(
-                f"Arquivo íntegro (sem download): {os.path.basename(final_dest_path)}",
-                "k"
+                f'Arquivo íntegro (sem download): {os.path.basename(final_dest_path)}',
+                'k',
             )
             return False
 
-        show_message(f"Hash atual {current_hash} != {saved_hash}", "w")
+        show_message(
+            f'Hash atual {current_hash} != {saved_hash}', 'w'
+        )
         return True
 
     except Exception as e:
-        show_message(f"Erro na validação: {e}", "w")
+        show_message(f'Erro na validação: {e}', 'w')
         return True
-    
+
+
 def execute_sync_script(block, sync_path, downloaded_file=None):
     """
     Executa script embutido garantindo contrato de parâmetros.
-    """        
+    """
     if not sync_path or not os.path.exists(sync_path):
-        raise RuntimeError("Contrato inválido: sync_path inexistente")
+        raise RuntimeError('Contrato inválido: sync_path inexistente')
 
     try:
-        code = block.get("content")
-        interpreter = block.get("ext", "python").lower()
-        phase = block.get("phase", "start")
+        code = block.get('content')
+        interpreter = block.get('ext', 'python').lower()
+        phase = block.get('phase', 'start')
 
         if not code:
             return
@@ -319,14 +339,20 @@ def execute_sync_script(block, sync_path, downloaded_file=None):
         # =========================================================
         # 🔒 CRIA SCRIPT TEMPORÁRIO
         # =========================================================
-        suffix = f".{interpreter}"
-        if interpreter in ("py", "python"):
-            suffix = ".py"
-        elif interpreter == "ps1":
-            suffix = ".ps1"
+        suffix = f'.{interpreter}'
+        if interpreter in ('py', 'python'):
+            suffix = '.py'
+        elif interpreter == 'ps1':
+            suffix = '.ps1'
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, mode="w", encoding="utf-8", newline="\n") as tmp:
-            tmp.write("\n".join(code))
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=suffix,
+            mode='w',
+            encoding='utf-8',
+            newline='\n',
+        ) as tmp:
+            tmp.write('\n'.join(code))
             tmp_path = tmp.name
 
         try:
@@ -337,22 +363,35 @@ def execute_sync_script(block, sync_path, downloaded_file=None):
         # =========================================================
         # 🔒 MONTA ARGUMENTOS (CONTRATO OBRIGATÓRIO)
         # =========================================================
-        if interpreter in ("py", "python"):
+        if interpreter in ('py', 'python'):
             args = [sys.executable, tmp_path]
-        elif interpreter == "ps1" and os.name == "nt":
-            args = ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", tmp_path]
-        elif os.name == "nt":
-            args = ["cmd.exe", "/c", tmp_path]
+        elif interpreter == 'ps1' and os.name == 'nt':
+            args = [
+                'powershell.exe',
+                '-ExecutionPolicy',
+                'Bypass',
+                '-File',
+                tmp_path,
+            ]
+        elif os.name == 'nt':
+            args = ['cmd.exe', '/c', tmp_path]
         else:
-            args = ["bash", tmp_path]
+            args = ['bash', tmp_path]
 
         # 🔒 ARG1: path do .syncdownload (OBRIGATÓRIO)
         args.append(sync_path)
-        
-        args.append(os.path.basename(downloaded_file) if downloaded_file else "")
-        args.append(downloaded_file if downloaded_file else "")
 
-        show_message(f"[SCRIPT:{phase}] Exec → {os.path.basename(sync_path)}", "i")
+        args.append(
+            os.path.basename(downloaded_file)
+            if downloaded_file
+            else ''
+        )
+        args.append(downloaded_file if downloaded_file else '')
+
+        show_message(
+            f'[SCRIPT:{phase}] Exec → {os.path.basename(sync_path)}',
+            'i',
+        )
 
         # =========================================================
         # 🔒 EXECUÇÃO ISOLADA
@@ -362,17 +401,19 @@ def execute_sync_script(block, sync_path, downloaded_file=None):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            cwd=os.path.dirname(sync_path)
+            cwd=os.path.dirname(sync_path),
         )
 
         if result.stdout:
-            show_message(result.stdout.strip(), "d")
+            show_message(result.stdout.strip(), 'd')
 
         if result.stderr:
-            show_message(result.stderr.strip(), "w")
+            show_message(result.stderr.strip(), 'w')
 
         if result.returncode != 0:
-            show_message(f"Script retornou código {result.returncode}", "w")
+            show_message(
+                f'Script retornou código {result.returncode}', 'w'
+            )
 
         # 🔒 cleanup obrigatório
         try:
@@ -386,4 +427,4 @@ def execute_sync_script(block, sync_path, downloaded_file=None):
                 os.remove(tmp_path)
         except Exception:
             pass
-        show_message(f"Erro ao executar script: {e}", "e")
+        show_message(f'Erro ao executar script: {e}', 'e')

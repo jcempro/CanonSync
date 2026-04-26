@@ -6,12 +6,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 """
-SYNC ENGINE
+CanonSync - Sync Engine
 PARSER SYNCDOWNLOAD | BIBLIOTECA
 
 ---
-Título: /jcempentools/Sync/
-Descrição: Sync Engine unifies complex synchronization pipelines through: Abstraction (unified API interface), Caching (intelligent reconciliation), Containers (automated selective extraction), and Extensibility (phase-based subscripting).
+Título: CanonSync - Sync Engine
+Descrição: Sync Engine unifies complex synchronization pipelines through:
+           Abstraction (unified API interface), Caching (intelligent
+           reconciliation), Containers (automated selective extraction),
+           and Extensibility (phase-based subscripting).
 Autor: [jcempentools], [JeanCarloEM]
 Contato: [https://github.com/jcempentools/sync/]
 License: MPL 2.0
@@ -36,7 +39,7 @@ Arquitetura SYNC:
 sync/
 │
 ├── main.py                        # Orquestração do pipeline (cleanup → download → cópia → retry → pós)
-├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas 
+├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas
 │                                    entre dois ou mais scripts
 ├── core/
 │   ├── syncdownload.parser.py     # Parsing .syncdownload, resolução de URL e nome determinístico
@@ -115,101 +118,14 @@ Restrições:
 
 # IMPORTS
 import os
-import time
-import urllib
+import sys
 
-from sync_local.commons import *
-from sync_local.utils.naming import normalize_product_name
-from sync_local.utils.naming import is_same_product
-from sync_local.utils.logging import show_message
-from sync_local.core.cache_validation import hash_file
-from sync_local.utils.progress import create_progress
+# 🔒 garante que o root do projeto esteja no PYTHONPATH
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 
-# VARIÁVEIS GLOBAIS
-# (usa commons)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
-# MAPEAMENTO DE FUNÇÕES
-
-def fetch_remote_hash(remote_hash_url):
-    """
-    Extrai hash remoto conforme contrato:
-    - aceita conteúdo bruto
-    - aceita formato "<hash>  filename"
-    - infere tipo por tamanho
-    """
-
-    try:
-        req = urllib.request.Request(remote_hash_url)
-        with http_open(req) as response:
-            content = response.read().decode(errors="ignore")
-
-        # 🔒 extrai primeiro hash válido
-        match = re.search(r'\b([a-fA-F0-9]{32}|[a-fA-F0-9]{64})\b', content)
-
-        if not match:
-            raise Exception("Hash remoto não extraível")
-
-        return match.group(1).lower()
-
-    except Exception as e:
-        raise Exception(f"Falha ao obter hash remoto: {e}")
-
-def download_file_with_progress(url, dst):
-    """
-    Descrição: Download de arquivo com progressbar unificada.
-    Parâmetros:
-    - url (str): URL do arquivo.
-    - dst (str): Caminho destino.
-    Retorno:
-    - None
-    """
-
-    req = urllib.request.Request(url)
-
-    with http_open(req) as response:
-        total_size = response.headers.get("Content-Length")
-        total_size = int(total_size) if total_size else None        
-
-        with open(dst, 'wb') as out_file:
-            with create_progress("cyan") as progress:
-                task = progress.add_task(
-                    "",
-                    total=total_size,
-                    name=os.path.basename(dst)
-                )
-
-                last_progress = time.time()
-                READ_TIMEOUT = 60  # segundos sem receber dados
-
-                while True:
-                    chunk = response.read(65536)
-
-                    if chunk:
-                        out_file.write(chunk)
-                        last_progress = time.time()
-
-                        if total_size:
-                            progress.update(task, advance=len(chunk))
-                    else:
-                        break
-
-                    # 🔒 timeout por inatividade (não depende do tamanho total)
-                    if time.time() - last_progress > READ_TIMEOUT:
-                        raise TimeoutError("Download stalled (no data received)")     
-
-
-def resolve_final_url(url, timeout=10):
-    """
-    Descrição: Resolve URL final após redirect via HEAD.
-    Parâmetros:
-    - url (str): URL original.
-    - timeout (int): Timeout.
-    Retorno:
-    - tuple: (url_final, headers)
-    """    
-    try:
-        req = urllib.request.Request(url, method="HEAD")
-        with http_open(req, timeout=timeout) as response:
-            return response.geturl(), response.headers
-    except Exception:
-        return None, {}
+# BUG FIX: `sync_local` EVITA CONFLITO DE NOME EM BIBLIOTECA PYTON
+from CanonSync.main import *

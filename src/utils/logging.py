@@ -6,12 +6,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 """
-SYNC ENGINE
+CanonSync - Sync Engine
 PARSER SYNCDOWNLOAD | BIBLIOTECA
 
 ---
-Título: /jcempentools/Sync/
-Descrição: Sync Engine unifies complex synchronization pipelines through: Abstraction (unified API interface), Caching (intelligent reconciliation), Containers (automated selective extraction), and Extensibility (phase-based subscripting).
+Título: CanonSync - Sync Engine
+Descrição: Sync Engine unifies complex synchronization pipelines through:
+           Abstraction (unified API interface), Caching (intelligent
+           reconciliation), Containers (automated selective extraction),
+           and Extensibility (phase-based subscripting).
 Autor: [jcempentools], [JeanCarloEM]
 Contato: [https://github.com/jcempentools/sync/]
 License: MPL 2.0
@@ -36,7 +39,7 @@ Arquitetura SYNC:
 sync/
 │
 ├── main.py                        # Orquestração do pipeline (cleanup → download → cópia → retry → pós)
-├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas 
+├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas
 │                                    entre dois ou mais scripts
 ├── core/
 │   ├── syncdownload.parser.py     # Parsing .syncdownload, resolução de URL e nome determinístico
@@ -114,11 +117,11 @@ Restrições:
 """
 
 # IMPORTS
-from datetime import datetime
 import re
+from datetime import datetime
 
-from sync_local.commons import *
-from sync_local.utils.progress import _normalize_color
+from CanonSync.src.commons import *
+from CanonSync.src.utils.progress import _normalize_color
 
 # VARIÁVEIS GLOBAIS
 _log_iniciado = False
@@ -128,7 +131,10 @@ console = Console()
 
 # MAPEAMENTO DE FUNÇÕES
 
-def show_message(txt, tipo=None, cor="white", bold=True, inline=False):
+
+def show_message(
+    txt, tipo=None, cor='white', bold=True, inline=False
+):
     """show_message(txt, tipo=None, cor="white", bold=True, inline=False)
     Descrição: Exibe mensagem formatada e registra log.
     Parâmetros:
@@ -143,8 +149,12 @@ def show_message(txt, tipo=None, cor="white", bold=True, inline=False):
     global _log_iniciado, retent_loop_count
 
     def limpar_formatacao_rich(mensagem):
-        mensagem = re.sub(r'\[(\w[^\]]*)\](.*?)\[/\1\]', r'\2', mensagem)
-        mensagem = re.sub(r'\[(\w[^\]]*)\](.*?)\[/\]', r'\2', mensagem)
+        mensagem = re.sub(
+            r'\[(\w[^\]]*)\](.*?)\[/\1\]', r'\2', mensagem
+        )
+        mensagem = re.sub(
+            r'\[(\w[^\]]*)\](.*?)\[/\]', r'\2', mensagem
+        )
         return mensagem.strip()
 
     def truncar_log_se_necessario():
@@ -157,66 +167,91 @@ def show_message(txt, tipo=None, cor="white", bold=True, inline=False):
             f.seek(-MAX_LOG_SIZE, os.SEEK_END)
             conteudo = f.read()
             primeiro_nl = conteudo.find(b'\n')
-            conteudo = conteudo[primeiro_nl + 1:] if primeiro_nl != -1 else conteudo
+            conteudo = (
+                conteudo[primeiro_nl + 1 :]
+                if primeiro_nl != -1
+                else conteudo
+            )
         with open(LOG_FILE, 'wb') as f:
             f.write(conteudo)
 
     tipos_demo = {
-        "i": ("I", "cyan"), "e": ("E", "bright_magenta"), "w": ("W", "yellow"),
-        "d": ("D", "bright_black"), "s": ("✓", "green"), "k": ("✓", "dodger_blue2"),
-        "+": ("+", "bright_green"), "-": ("-", "bright_red"),
+        'i': ('I', 'cyan'),
+        'e': ('E', 'bright_magenta'),
+        'w': ('W', 'yellow'),
+        'd': ('D', 'bright_black'),
+        's': ('✓', 'green'),
+        'k': ('✓', 'dodger_blue2'),
+        '+': ('+', 'bright_green'),
+        '-': ('-', 'bright_red'),
     }
 
     aliases = {
-        "info": "i", "error": "e", "warn": "w", "warning": "w",
-        "debug": "d", "success": "s", "sucesso": "s",
-        "ok": "k", "added": "+", "add": "+",
-        "removed": "-", "remove": "-", "del": "-"
+        'info': 'i',
+        'error': 'e',
+        'warn': 'w',
+        'warning': 'w',
+        'debug': 'd',
+        'success': 's',
+        'sucesso': 's',
+        'ok': 'k',
+        'added': '+',
+        'add': '+',
+        'removed': '-',
+        'remove': '-',
+        'del': '-',
     }
 
     if tipo is not None:
         tipo_str = aliases.get(str(tipo).lower(), str(tipo).lower())
-        marcador, cor_definida = tipos_demo.get(tipo_str, ("?", "white"))
+        marcador, cor_definida = tipos_demo.get(
+            tipo_str, ('?', 'white')
+        )
         cor = cor_definida
-        txt = f"[{marcador}] {txt}"
+        txt = f'[{marcador}] {txt}'
 
     if retent_loop_count > 0:
-        txt = f"(Retry: {retent_loop_count}) {txt}"
+        txt = f'(Retry: {retent_loop_count}) {txt}'
 
     style_extra, base_color = _normalize_color(cor)
 
     # 🔒 evita duplicação de bold
     final_style = []
 
-    if bold and "bold" not in style_extra:
-        final_style.append("bold")
+    if bold and 'bold' not in style_extra:
+        final_style.append('bold')
 
     if style_extra:
         final_style.append(style_extra)
 
     final_style.append(base_color)
 
-    style = " ".join(final_style).strip()
+    style = ' '.join(final_style).strip()
 
     if inline:
         terminal_width = os.get_terminal_size().columns
         console.print(' ' * terminal_width, end='\r')
-    
-    console.print(f"[{style}]{txt}[/{style}]", end=f"{'\r' if inline else '\n'}")
+
+    console.print(
+        f'[{style}]{txt}[/{style}]', end=f'{"\r" if inline else "\n"}'
+    )
 
     mensagem_limpa = limpar_formatacao_rich(txt)
-    timestamp = datetime.now().strftime("[%H:%M:%S] ")
+    timestamp = datetime.now().strftime('[%H:%M:%S] ')
     truncar_log_se_necessario()
-    
+
     with open(LOG_FILE, 'a', encoding='utf-8') as f_log:
         if not _log_iniciado:
-            f_log.write("\n")
-            f_log.write(f"[   ] {timestamp} " + "-" * 40 + "\n")
-            f_log.write(f"[   ] {timestamp} Início execução ID '{ID_EXECUCAO}', {datetime.now().strftime('%Y-%m-%d')}\n")
+            f_log.write('\n')
+            f_log.write(f'[   ] {timestamp} ' + '-' * 40 + '\n')
+            f_log.write(
+                f"[   ] {timestamp} Início execução ID '{ID_EXECUCAO}', {datetime.now().strftime('%Y-%m-%d')}\n"
+            )
             _log_iniciado = True
-        f_log.write(f"[{ID_EXECUCAO}] {timestamp} {mensagem_limpa}\n")
+        f_log.write(f'[{ID_EXECUCAO}] {timestamp} {mensagem_limpa}\n')
 
-def show_inline(txt, tipo, cor="white", bold=True):
+
+def show_inline(txt, tipo, cor='white', bold=True):
     """show_inline(txt, tipo, cor="white", bold=True)
     Descrição: Exibe mensagem inline no console.
     Parâmetros:
@@ -226,17 +261,18 @@ def show_inline(txt, tipo, cor="white", bold=True):
     - bold (bool): Aplica negrito.
     Retorno:
     - None
-    """    
+    """
     show_message(txt, tipo, cor, bold, True)
 
+
 def get_op_icon(op_type, direction=None):
-    if op_type == "hash":
-        return "🔍⬅" if direction == "source" else "🔍➜"
+    if op_type == 'hash':
+        return '🔍⬅' if direction == 'source' else '🔍➜'
 
-    if op_type == "download":
-        return "⬇⬇"
+    if op_type == 'download':
+        return '⬇⬇'
 
-    if op_type == "copy":
-        return "➜➜"
+    if op_type == 'copy':
+        return '➜➜'
 
-    return "  "  # fallback 2 chars
+    return '  '  # fallback 2 chars

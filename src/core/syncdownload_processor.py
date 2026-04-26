@@ -6,12 +6,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 """
-SYNC ENGINE
+CanonSync - Sync Engine
 PARSER SYNCDOWNLOAD | BIBLIOTECA
 
 ---
-Título: /jcempentools/Sync/
-Descrição: Sync Engine unifies complex synchronization pipelines through: Abstraction (unified API interface), Caching (intelligent reconciliation), Containers (automated selective extraction), and Extensibility (phase-based subscripting).
+Título: CanonSync - Sync Engine
+Descrição: Sync Engine unifies complex synchronization pipelines through:
+           Abstraction (unified API interface), Caching (intelligent
+           reconciliation), Containers (automated selective extraction),
+           and Extensibility (phase-based subscripting).
 Autor: [jcempentools], [JeanCarloEM]
 Contato: [https://github.com/jcempentools/sync/]
 License: MPL 2.0
@@ -36,7 +39,7 @@ Arquitetura SYNC:
 sync/
 │
 ├── main.py                        # Orquestração do pipeline (cleanup → download → cópia → retry → pós)
-├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas 
+├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas
 │                                    entre dois ou mais scripts
 ├── core/
 │   ├── syncdownload.parser.py     # Parsing .syncdownload, resolução de URL e nome determinístico
@@ -114,32 +117,40 @@ Restrições:
 """
 
 # IMPORTS
+import gzip
+import hashlib
 import os
 import re
-import gzip
 import shutil
-import hashlib
 
-from sync_local.commons import *
-
-from sync_local.core.syncdownload_parser import resolve_download_context, parse_syncdownload_scripts
-from sync_local.core.cache_validation import is_cached_file_valid
-from sync_local.core.download_manager import download_file_with_progress
-from sync_local.core.metadata import generate_sync_metadata, hash_file
-from sync_local.core.metadata import manage_sync_metadata
-from sync_local.core.metadata import execute_sync_script
-from sync_local.core.cleanup import purge_similar_installers_safe
-from sync_local.core.download_manager import fetch_remote_hash
-from sync_local.utils.naming import normalize_product_name
-from sync_local.utils.naming import normalize_canonical_name
-from sync_local.utils.naming import is_same_product
-from sync_local.utils.dsl import resolve_if_dsl
-from sync_local.core.file_operations import copy_file_with_progress
-from sync_local.utils.logging import show_message
+from CanonSync.src.commons import *
+from CanonSync.src.core.cache_validation import is_cached_file_valid
+from CanonSync.src.core.cleanup import purge_similar_installers_safe
+from CanonSync.src.core.download_manager import (
+    download_file_with_progress,
+    fetch_remote_hash,
+)
+from CanonSync.src.core.file_operations import copy_file_with_progress
+from CanonSync.src.core.metadata import (
+    execute_sync_script,
+    generate_sync_metadata,
+    hash_file,
+    manage_sync_metadata,
+)
+from CanonSync.src.core.syncdownload_parser import (
+    parse_syncdownload_scripts,
+    resolve_download_context,
+)
+from CanonSync.src.utils.dsl import resolve_if_dsl
+from CanonSync.src.utils.logging import show_message
+from CanonSync.src.utils.naming import (
+    normalize_product_name,
+)
 
 # VARIÁVEIS GLOBAIS
 # Cache global de downloads já realizados (url -> path destino)
 download_registry = {}
+
 
 # MAPEAMENTO DE FUNÇÕES
 def process_single_syncdownload(path, dry_run):
@@ -150,7 +161,7 @@ def process_single_syncdownload(path, dry_run):
     - dry_run (bool): Simulação.
     Retorno:
     - None
-    """    
+    """
     # =========================================================
     # 🔒 CARREGA SCRIPTS EMBUTIDOS (ANTES DE TUDO)
     # =========================================================
@@ -158,27 +169,27 @@ def process_single_syncdownload(path, dry_run):
 
     def run_phase(phase, downloaded_file=None):
         for b in script_blocks:
-            if b["phase"] == phase:
+            if b['phase'] == phase:
                 execute_sync_script(b, path, downloaded_file)
 
     # 🔒 fase preresolve
-    run_phase("preresolve")
+    run_phase('preresolve')
 
     resolved = resolve_download_context(path)
     if not resolved:
         return
 
-    final_url = resolved["final_url"]
-    expected_hash = resolved["expected_hash"]
-    remote_hash_url = resolved.get("remote_hash_url")
-    filename = resolved["filename"]
+    final_url = resolved['final_url']
+    expected_hash = resolved['expected_hash']
+    remote_hash_url = resolved.get('remote_hash_url')
+    filename = resolved['filename']
 
     # 🔒 fase start (default)
-    run_phase("start")
+    run_phase('start')
 
     dest_dir = os.path.join(
         destination_path,
-        os.path.relpath(os.path.dirname(path), ORIGIN_PATH)
+        os.path.relpath(os.path.dirname(path), ORIGIN_PATH),
     )
 
     final_dest_path = os.path.join(dest_dir, filename)
@@ -186,15 +197,14 @@ def process_single_syncdownload(path, dry_run):
     # === CACHE NA ORIGEM ===
     origin_cached_path = os.path.join(os.path.dirname(path), filename)
 
-    valid_metadata = False    
+    valid_metadata = False
 
     if os.path.exists(origin_cached_path):
-
         # 🔒 valida presença de metadata CORRETA por tipo
         ext = os.path.splitext(origin_cached_path)[1].lower()
 
-        has_sha = os.path.exists(origin_cached_path + ".sha256")
-        has_syncado = os.path.exists(origin_cached_path + ".syncado")
+        has_sha = os.path.exists(origin_cached_path + '.sha256')
+        has_syncado = os.path.exists(origin_cached_path + '.syncado')
 
         # =========================================================
         # 🔒 NOVA REGRA: HASH DIRETO (linha 2 OU linha 4) SUBSTITUI METADATA
@@ -203,13 +213,16 @@ def process_single_syncdownload(path, dry_run):
 
         try:
             if expected_hash:
-                current_hash = hash_file(origin_cached_path, "Cache")
-                if current_hash and current_hash == expected_hash.lower():
+                current_hash = hash_file(origin_cached_path, 'Cache')
+                if (
+                    current_hash
+                    and current_hash == expected_hash.lower()
+                ):
                     hash_override_valid = True
 
             elif remote_hash_url:
                 remote_hash = fetch_remote_hash(remote_hash_url)
-                current_hash = hash_file(origin_cached_path, "Cache")
+                current_hash = hash_file(origin_cached_path, 'Cache')
 
                 if current_hash and current_hash == remote_hash:
                     hash_override_valid = True
@@ -218,20 +231,29 @@ def process_single_syncdownload(path, dry_run):
             hash_override_valid = False
 
         if hash_override_valid:
-            show_message(f"Cache válido via hash direto (sem metadata): {filename}", "k")
+            show_message(
+                f'Cache válido via hash direto (sem metadata): {filename}',
+                'k',
+            )
             valid_metadata = True
 
         else:
-            if ext in (".iso", ".img"):
+            if ext in ('.iso', '.img'):
                 if has_sha:
                     valid_metadata = True
                 else:
-                    show_message(f"Cache sem .sha256 → inválido (tratado como inexistente): {filename}", "w")
+                    show_message(
+                        f'Cache sem .sha256 → inválido (tratado como inexistente): {filename}',
+                        'w',
+                    )
             else:
                 if has_syncado:
                     valid_metadata = True
                 else:
-                    show_message(f"Cache sem .syncado → inválido (tratado como inexistente): {filename}", "w")
+                    show_message(
+                        f'Cache sem .syncado → inválido (tratado como inexistente): {filename}',
+                        'w',
+                    )
 
         # =========================================================
         # 🔒 FORÇA REPROCESSAMENTO COMO SE NÃO EXISTISSE
@@ -239,12 +261,14 @@ def process_single_syncdownload(path, dry_run):
         if not valid_metadata:
             try:
                 os.remove(origin_cached_path)
-                show_message(f"Cache inválido removido: {filename}", "w")
+                show_message(
+                    f'Cache inválido removido: {filename}', 'w'
+                )
             except Exception:
                 pass
 
             # 🔒 remove qualquer metadata residual
-            for ext_meta in (".sha256", ".syncado"):
+            for ext_meta in ('.sha256', '.syncado'):
                 try:
                     meta_path = origin_cached_path + ext_meta
                     if os.path.exists(meta_path):
@@ -255,14 +279,23 @@ def process_single_syncdownload(path, dry_run):
             # =========================================================
             # 🔒 FORÇA DOWNLOAD SEM USAR CACHE (SEM QUEBRAR FLUXO)
             # =========================================================
-            show_message(f"Forçando reprocessamento imediato: {filename}", "i")
+            show_message(
+                f'Forçando reprocessamento imediato: {filename}', 'i'
+            )
 
-            need_download = True      
+            need_download = True
 
             # 🔒 segue fluxo normal (download obrigatório)
         else:
-            if is_cached_file_valid(origin_cached_path, expected_hash) or hash_override_valid:
-                show_message(f"Cache válido na origem: {filename}", "k")
+            if (
+                is_cached_file_valid(
+                    origin_cached_path, expected_hash
+                )
+                or hash_override_valid
+            ):
+                show_message(
+                    f'Cache válido na origem: {filename}', 'k'
+                )
 
                 # =========================================================
                 # 🔒 STATUS DO DESTINO (COM SUPORTE A HASH DIRETO)
@@ -274,12 +307,22 @@ def process_single_syncdownload(path, dry_run):
                 if dest_exists:
                     try:
                         if expected_hash:
-                            dest_valid = hash_file(final_dest_path, "Destino") == expected_hash.lower()
+                            dest_valid = (
+                                hash_file(final_dest_path, 'Destino')
+                                == expected_hash.lower()
+                            )
                         elif remote_hash_url:
-                            remote_hash = fetch_remote_hash(remote_hash_url)
-                            dest_valid = hash_file(final_dest_path, "Destino") == remote_hash
+                            remote_hash = fetch_remote_hash(
+                                remote_hash_url
+                            )
+                            dest_valid = (
+                                hash_file(final_dest_path, 'Destino')
+                                == remote_hash
+                            )
                         else:
-                            dest_valid = is_cached_file_valid(final_dest_path, expected_hash)
+                            dest_valid = is_cached_file_valid(
+                                final_dest_path, expected_hash
+                            )
                     except Exception:
                         dest_valid = False
 
@@ -287,71 +330,109 @@ def process_single_syncdownload(path, dry_run):
                 # 🔒 REGRA CRÍTICA: BASTA UM DOS DOIS ESTAR VÁLIDO
                 # =========================================================
                 if dest_valid:
-                    show_message(f"Cache válido no destino: {filename}", "k")
-                    show_message(f"Sincronizado (sem ação): {filename}", "d")
-                    show_message(f"Sync completo: {filename}", "s")
+                    show_message(
+                        f'Cache válido no destino: {filename}', 'k'
+                    )
+                    show_message(
+                        f'Sincronizado (sem ação): {filename}', 'd'
+                    )
+                    show_message(f'Sync completo: {filename}', 's')
                     return
 
                 if dest_exists and not dest_valid:
-                    show_message(f"Destino inválido → será sobrescrito via espelhamento: {filename}", "w")
+                    show_message(
+                        f'Destino inválido → será sobrescrito via espelhamento: {filename}',
+                        'w',
+                    )
                 elif not dest_exists:
-                    show_message(f"Destino inexistente → cópia necessária: {filename}", "i")
+                    show_message(
+                        f'Destino inexistente → cópia necessária: {filename}',
+                        'i',
+                    )
 
                 # =========================================================
                 # 🔒 ESPALHAMENTO (SEM DOWNLOAD)
                 # =========================================================
-                show_message(f"Download não necessário (hash já válido): {filename}", "d")
+                show_message(
+                    f'Download não necessário (hash já válido): {filename}',
+                    'd',
+                )
 
                 if not dry_run:
-                    copy_file_with_progress(origin_cached_path, final_dest_path)
+                    copy_file_with_progress(
+                        origin_cached_path, final_dest_path
+                    )
 
                     # 🔒 gera metadata se inexistente
-                    generate_sync_metadata(origin_cached_path, resolved["url"])
+                    generate_sync_metadata(
+                        origin_cached_path, resolved['url']
+                    )
 
-                    for ext_meta in (".sha256", ".syncado"):
+                    for ext_meta in ('.sha256', '.syncado'):
                         src_meta = origin_cached_path + ext_meta
                         dst_meta = final_dest_path + ext_meta
 
                         if os.path.exists(src_meta):
                             try:
-                                copy_file_with_progress(src_meta, dst_meta)
+                                copy_file_with_progress(
+                                    src_meta, dst_meta
+                                )
                             except Exception:
                                 pass
 
-                    show_message(f"Arquivo sincronizado via espelhamento: {filename}", "s")
-                    show_message(f"Sync completo: {filename}", "s")
+                    show_message(
+                        f'Arquivo sincronizado via espelhamento: {filename}',
+                        's',
+                    )
+                    show_message(f'Sync completo: {filename}', 's')
 
                     if os.path.exists(final_dest_path):
                         purge_similar_installers_safe(
                             dest_dir,
                             filename,
-                            canonical_name=resolved.get("custom_filename")
+                            canonical_name=resolved.get(
+                                'custom_filename'
+                            ),
                         )
                 else:
-                    show_message(f"[DRY-RUN] Copiaria do cache: {filename}", "d")
+                    show_message(
+                        f'[DRY-RUN] Copiaria do cache: {filename}',
+                        'd',
+                    )
 
                 return
             else:
-                show_message(f"Cache corrompido na origem → removendo: {filename}", "w")
+                show_message(
+                    f'Cache corrompido na origem → removendo: {filename}',
+                    'w',
+                )
 
                 try:
                     os.remove(origin_cached_path)
-                    show_message(f"Cache removido: {filename}", "w")
+                    show_message(f'Cache removido: {filename}', 'w')
                 except Exception:
                     pass
 
                 # 🔒 remove metadata associada
                 try:
-                    if os.path.exists(origin_cached_path + ".sha256"):
-                        os.remove(origin_cached_path + ".sha256")
-                        show_message(f"Metadado .sha256 do cache removido: {filename}", "w")
+                    if os.path.exists(origin_cached_path + '.sha256'):
+                        os.remove(origin_cached_path + '.sha256')
+                        show_message(
+                            f'Metadado .sha256 do cache removido: {filename}',
+                            'w',
+                        )
                 except Exception:
                     pass
 
                 try:
-                    if os.path.exists(origin_cached_path + ".syncado"):
-                        os.remove(origin_cached_path + ".syncado")
-                        show_message(f"Metadado .syncado do cache removido: {filename}", "w")
+                    if os.path.exists(
+                        origin_cached_path + '.syncado'
+                    ):
+                        os.remove(origin_cached_path + '.syncado')
+                        show_message(
+                            f'Metadado .syncado do cache removido: {filename}',
+                            'w',
+                        )
 
                 except Exception:
                     pass
@@ -362,8 +443,8 @@ def process_single_syncdownload(path, dry_run):
     else:
         need_download = manage_sync_metadata(
             final_dest_path=final_dest_path,
-            url=final_url or resolved["url"],
-            expected_hash=expected_hash
+            url=final_url or resolved['url'],
+            expected_hash=expected_hash,
         )
 
     if not need_download:
@@ -371,7 +452,9 @@ def process_single_syncdownload(path, dry_run):
 
     # === DRY-RUN: NÃO EXECUTA DOWNLOAD ===
     if dry_run:
-        show_message(f"[DRY-RUN] Baixaria: {filename} ({final_url})", "d")
+        show_message(
+            f'[DRY-RUN] Baixaria: {filename} ({final_url})', 'd'
+        )
         return
 
     # =========================================================
@@ -381,45 +464,61 @@ def process_single_syncdownload(path, dry_run):
         cached_path = download_registry[final_url]
 
         if os.path.exists(cached_path):
-            show_message(f"Reuso de download (duplicado): {filename}", "w")
+            show_message(
+                f'Reuso de download (duplicado): {filename}', 'w'
+            )
 
             try:
                 os.makedirs(dest_dir, exist_ok=True)
 
-                if not os.path.exists(final_dest_path) or not is_cached_file_valid(final_dest_path, expected_hash):
-                    copy_file_with_progress(cached_path, final_dest_path)
+                if not os.path.exists(
+                    final_dest_path
+                ) or not is_cached_file_valid(
+                    final_dest_path, expected_hash
+                ):
+                    copy_file_with_progress(
+                        cached_path, final_dest_path
+                    )
 
                 if os.path.exists(final_dest_path):
                     purge_similar_installers_safe(
                         dest_dir,
                         filename,
-                        canonical_name=resolved.get("custom_filename")
+                        canonical_name=resolved.get(
+                            'custom_filename'
+                        ),
                     )
 
                 return
 
             except Exception as e:
-                show_message(f"Falha no reuso de download: {e}", "e")
+                show_message(f'Falha no reuso de download: {e}', 'e')
 
     # === DOWNLOAD (SEMPRE PRIMEIRO PARA CACHE NA ORIGEM) ===
     try:
-        os.makedirs(os.path.dirname(origin_cached_path), exist_ok=True)
+        os.makedirs(
+            os.path.dirname(origin_cached_path), exist_ok=True
+        )
         os.makedirs(dest_dir, exist_ok=True)
 
         # 🔒 download vai SEMPRE para o cache (origem)
         download_file_with_progress(final_url, origin_cached_path)
 
-        show_message(f"Download concluído (cache): {filename}", "+")
+        show_message(f'Download concluído (cache): {filename}', '+')
 
         # 🔒 registra download para reutilização futura (aponta para cache)
         download_registry[final_url] = origin_cached_path
 
         # 🔒 copia do cache → destino (NUNCA download direto no destino)
-        if not os.path.exists(final_dest_path) or not is_cached_file_valid(final_dest_path, expected_hash):
-            copy_file_with_progress(origin_cached_path, final_dest_path)
+        if not os.path.exists(
+            final_dest_path
+        ) or not is_cached_file_valid(final_dest_path, expected_hash):
+            copy_file_with_progress(
+                origin_cached_path, final_dest_path
+            )
 
     except Exception as e:
-        show_message(f"Erro no download: {filename} -> {e}", "e")
+        show_message(f'Erro no download: {filename} -> {e}', 'e')
 
         if path not in failed_files:
             failed_files.append(path)
@@ -429,28 +528,39 @@ def process_single_syncdownload(path, dry_run):
     # =========================================================
     # 🔒 PIPELINE .gz (validação + possível descompressão)
     # =========================================================
-    is_gz = final_dest_path.lower().endswith(".gz")
+    is_gz = final_dest_path.lower().endswith('.gz')
 
     validated = False
 
     # 🔒 1. tenta validar o .gz diretamente
     if is_gz:
         if is_cached_file_valid(final_dest_path, expected_hash):
-             # 🔒 .gz é o artefato final válido → NÃO remover
+            # 🔒 .gz é o artefato final válido → NÃO remover
             validated = True
         else:
-            show_message(f".gz não confere hash → tentando conteúdo: {filename}", "w")
+            show_message(
+                f'.gz não confere hash → tentando conteúdo: {filename}',
+                'w',
+            )
 
             try:
                 decompressed_path = final_dest_path[:-3]  # remove .gz
 
-                with gzip.open(final_dest_path, 'rb') as f_in, open(decompressed_path, 'wb') as f_out:
+                with (
+                    gzip.open(final_dest_path, 'rb') as f_in,
+                    open(decompressed_path, 'wb') as f_out,
+                ):
                     shutil.copyfileobj(f_in, f_out)
 
                 # 🔒 valida conteúdo descompactado
-                if is_cached_file_valid(decompressed_path, expected_hash):
-                    show_message(f"Hash válido após descompressão: {filename}", "k")
-                    
+                if is_cached_file_valid(
+                    decompressed_path, expected_hash
+                ):
+                    show_message(
+                        f'Hash válido após descompressão: {filename}',
+                        'k',
+                    )
+
                     try:
                         # 🔒 remove .gz somente após validação do conteúdo
                         os.remove(final_dest_path)
@@ -465,11 +575,14 @@ def process_single_syncdownload(path, dry_run):
                     # =========================================================
                     # 🔒 METADATA ESPECIAL (.gz → conteúdo)
                     # =========================================================
-                    try:                        
+                    try:
+
                         def _hash_file(p):
                             h = hashlib.sha256()
-                            with open(p, "rb") as f:
-                                for chunk in iter(lambda: f.read(65536), b""):
+                            with open(p, 'rb') as f:
+                                for chunk in iter(
+                                    lambda: f.read(65536), b''
+                                ):
                                     h.update(chunk)
                             return h.hexdigest()
 
@@ -483,13 +596,18 @@ def process_single_syncdownload(path, dry_run):
                             if not os.path.isfile(full):
                                 continue
 
-                            if f.lower().endswith((".sha256", ".syncado", ".gz")):
+                            if f.lower().endswith(
+                                ('.sha256', '.syncado', '.gz')
+                            ):
                                 continue
 
                             candidates.append(full)
 
                         if candidates:
-                            target_file = max(candidates, key=lambda p: os.path.getsize(p))
+                            target_file = max(
+                                candidates,
+                                key=lambda p: os.path.getsize(p),
+                            )
                         else:
                             target_file = final_dest_path
 
@@ -503,20 +621,30 @@ def process_single_syncdownload(path, dry_run):
                         if expected_hash:
                             gz_hash = expected_hash.lower()
 
-                        sha_path = target_file + ".sha256"
+                        sha_path = target_file + '.sha256'
 
-                        with open(sha_path, "w", encoding="utf-8") as f:
+                        with open(
+                            sha_path, 'w', encoding='utf-8'
+                        ) as f:
                             # linha 1 → conteúdo real
-                            f.write(f"{extracted_hash}\n")
+                            f.write(f'{extracted_hash}\n')
 
                             # linha 2 → vínculo com .gz (hash original + URL)
                             if gz_hash:
-                                f.write(f"{gz_hash}  {resolved['url']}\n")
+                                f.write(
+                                    f'{gz_hash}  {resolved["url"]}\n'
+                                )
 
                     except Exception as e:
-                        show_message(f"Falha ao gerar .sha256 especial: {e}", "e")                    
+                        show_message(
+                            f'Falha ao gerar .sha256 especial: {e}',
+                            'e',
+                        )
                 else:
-                    show_message(f"Conteúdo descompactado inválido: {filename}", "w")
+                    show_message(
+                        f'Conteúdo descompactado inválido: {filename}',
+                        'w',
+                    )
 
                     try:
                         os.remove(decompressed_path)
@@ -524,26 +652,33 @@ def process_single_syncdownload(path, dry_run):
                         pass
 
             except Exception as e:
-                show_message(f"Falha ao descompactar .gz: {e}", "e")
+                show_message(f'Falha ao descompactar .gz: {e}', 'e')
 
     # 🔒 fallback padrão (não gz ou gz válido direto)
     if not validated:
         if not is_cached_file_valid(final_dest_path, expected_hash):
-            show_message(f"Download inválido (hash/tamanho): {filename}", "w")
+            show_message(
+                f'Download inválido (hash/tamanho): {filename}', 'w'
+            )
             try:
                 os.remove(final_dest_path)
             except:
                 pass
             return
-    
+
     # =========================================================
     # 🔒 PADRONIZAÇÃO DE BASENAME (linha 3)
     # =========================================================
-    canonical = resolved.get("custom_filename")
+    canonical = resolved.get('custom_filename')
 
     # 🔒 BLOQUEIO DE PLACEHOLDER NÃO RESOLVIDO
-    if isinstance(canonical, str) and ("{}" in canonical or "{" in canonical):
-        show_message(f"Canonical inválido (placeholder não resolvido): {canonical}", "w")
+    if isinstance(canonical, str) and (
+        '{}' in canonical or '{' in canonical
+    ):
+        show_message(
+            f'Canonical inválido (placeholder não resolvido): {canonical}',
+            'w',
+        )
         canonical = None
 
     if canonical:
@@ -559,7 +694,7 @@ def process_single_syncdownload(path, dry_run):
                 final_dest_path = new_path
                 filename = new_name
             except Exception as e:
-                show_message(f"Falha ao padronizar nome: {e}", "e")   
+                show_message(f'Falha ao padronizar nome: {e}', 'e')
 
     # =========================================================
     # 🔒 MULTI-ARQUIVOS (mesmo basename)
@@ -582,11 +717,13 @@ def process_single_syncdownload(path, dry_run):
             candidate_path = os.path.join(dest_dir, candidate)
 
             try:
-                if normalize_product_name(f) == normalize_product_name(filename):
+                if normalize_product_name(
+                    f
+                ) == normalize_product_name(filename):
                     if full != candidate_path:
                         os.rename(full, candidate_path)
             except:
-                pass                 
+                pass
 
     # =========================================================
     # 🔒 VALIDAÇÃO OBRIGATÓRIA — HASH REMOTO (linha 4)
@@ -594,26 +731,30 @@ def process_single_syncdownload(path, dry_run):
     if remote_hash_url:
         try:
             # 🔒 fase preremotehash
-            run_phase("preremotehash")
-        
+            run_phase('preremotehash')
+
             resolved_hash_input = resolve_if_dsl(
-                remote_hash_url,
-                context="remote_hash_url"
+                remote_hash_url, context='remote_hash_url'
             )
 
             # 🔒 se DSL retornar hash direto → usa direto
-            if isinstance(resolved_hash_input, str) and re.fullmatch(r'[a-fA-F0-9]{64}', resolved_hash_input.strip()):
+            if isinstance(resolved_hash_input, str) and re.fullmatch(
+                r'[a-fA-F0-9]{64}', resolved_hash_input.strip()
+            ):
                 remote_hash = resolved_hash_input.strip().lower()
             else:
                 remote_hash = fetch_remote_hash(resolved_hash_input)
 
             # 🔒 fase posremotehash
-            run_phase("posremotehash")
+            run_phase('posremotehash')
 
-            local_hash = hash_file(final_dest_path, "Destino")
+            local_hash = hash_file(final_dest_path, 'Destino')
 
             if local_hash != remote_hash:
-                show_message(f"Hash remoto divergente → invalidando: {filename}", "w")
+                show_message(
+                    f'Hash remoto divergente → invalidando: {filename}',
+                    'w',
+                )
 
                 # 🔒 remove destino
                 try:
@@ -629,9 +770,11 @@ def process_single_syncdownload(path, dry_run):
                     pass
 
                 # 🔒 remove metadata
-                for ext_meta in (".sha256", ".syncado"):
+                for ext_meta in ('.sha256', '.syncado'):
                     try:
-                        if os.path.exists(origin_cached_path + ext_meta):
+                        if os.path.exists(
+                            origin_cached_path + ext_meta
+                        ):
                             os.remove(origin_cached_path + ext_meta)
                     except:
                         pass
@@ -642,30 +785,31 @@ def process_single_syncdownload(path, dry_run):
 
                 return
 
-            show_message(f"Hash remoto válido: {filename}", "k")            
+            show_message(f'Hash remoto válido: {filename}', 'k')
 
         except Exception as e:
-            show_message(f"Falha na validação de hash remoto: {e}", "e")
+            show_message(
+                f'Falha na validação de hash remoto: {e}', 'e'
+            )
 
             # 🔒 abort conforme contrato
             if path not in failed_files:
                 failed_files.append(path)
 
-            return    
+            return
 
     # === PURGE CONTROLADO ===
     purge_similar_installers_safe(
         dest_dir,
         filename,
-        canonical_name=resolved.get("custom_filename")
+        canonical_name=resolved.get('custom_filename'),
     )
 
     # =========================================================
     # 🔒 METADATA PRIMEIRO NO CACHE (ORIGEM)
     # =========================================================
     generate_sync_metadata(
-        final_dest_path=origin_cached_path,
-        url=resolved["url"]
+        final_dest_path=origin_cached_path, url=resolved['url']
     )
 
     # =========================================================
@@ -674,11 +818,15 @@ def process_single_syncdownload(path, dry_run):
     # === CACHE NA ORIGEM ===
     try:
         # arquivo
-        if not os.path.exists(final_dest_path) or not is_cached_file_valid(final_dest_path, expected_hash):
-            copy_file_with_progress(origin_cached_path, final_dest_path)
+        if not os.path.exists(
+            final_dest_path
+        ) or not is_cached_file_valid(final_dest_path, expected_hash):
+            copy_file_with_progress(
+                origin_cached_path, final_dest_path
+            )
 
         # metadata associada (se existir)
-        for ext_meta in (".sha256", ".syncado"):
+        for ext_meta in ('.sha256', '.syncado'):
             src_meta = origin_cached_path + ext_meta
             dst_meta = final_dest_path + ext_meta
 
@@ -689,12 +837,16 @@ def process_single_syncdownload(path, dry_run):
                     pass
 
         # 🔒 fase end (arquivo já disponível)
-        run_phase("end", final_dest_path)
+        run_phase('end', final_dest_path)
 
-        show_message(f"Sync completo: {filename}", "s")
+        show_message(f'Sync completo: {filename}', 's')
 
     except Exception as e:
-        show_message(f"Inconsistência: falha ao propagar cache→destino: {e}", "e")
+        show_message(
+            f'Inconsistência: falha ao propagar cache→destino: {e}',
+            'e',
+        )
+
 
 def process_syncdownloads(root, dry_run):
     """
@@ -704,10 +856,10 @@ def process_syncdownloads(root, dry_run):
     - dry_run (bool): Simulação.
     Retorno:
     - None
-    """    
+    """
     for dirpath, _, files in os.walk(root):
         for f in files:
-            if not f.lower().endswith(".syncdownload"):
+            if not f.lower().endswith('.syncdownload'):
                 continue
 
             sync_path = os.path.join(dirpath, f)
@@ -715,7 +867,10 @@ def process_syncdownloads(root, dry_run):
             try:
                 process_single_syncdownload(sync_path, dry_run)
             except Exception as e:
-                show_message(f"Erro no .syncdownload {sync_path}: {e}", "e")
+                show_message(
+                    f'Erro no .syncdownload {sync_path}: {e}', 'e'
+                )
+
 
 def process_single_syncdownload(path, dry_run):
     """
@@ -725,7 +880,7 @@ def process_single_syncdownload(path, dry_run):
     - dry_run (bool): Simulação.
     Retorno:
     - None
-    """    
+    """
     # =========================================================
     # 🔒 CARREGA SCRIPTS EMBUTIDOS (ANTES DE TUDO)
     # =========================================================
@@ -733,27 +888,27 @@ def process_single_syncdownload(path, dry_run):
 
     def run_phase(phase, downloaded_file=None):
         for b in script_blocks:
-            if b["phase"] == phase:
+            if b['phase'] == phase:
                 execute_sync_script(b, path, downloaded_file)
 
     # 🔒 fase preresolve
-    run_phase("preresolve")
+    run_phase('preresolve')
 
     resolved = resolve_download_context(path)
     if not resolved:
         return
 
-    final_url = resolved["final_url"]
-    expected_hash = resolved["expected_hash"]
-    remote_hash_url = resolved.get("remote_hash_url")
-    filename = resolved["filename"]
+    final_url = resolved['final_url']
+    expected_hash = resolved['expected_hash']
+    remote_hash_url = resolved.get('remote_hash_url')
+    filename = resolved['filename']
 
     # 🔒 fase start (default)
-    run_phase("start")
+    run_phase('start')
 
     dest_dir = os.path.join(
         destination_path,
-        os.path.relpath(os.path.dirname(path), ORIGIN_PATH)
+        os.path.relpath(os.path.dirname(path), ORIGIN_PATH),
     )
 
     final_dest_path = os.path.join(dest_dir, filename)
@@ -761,15 +916,14 @@ def process_single_syncdownload(path, dry_run):
     # === CACHE NA ORIGEM ===
     origin_cached_path = os.path.join(os.path.dirname(path), filename)
 
-    valid_metadata = False    
+    valid_metadata = False
 
     if os.path.exists(origin_cached_path):
-
         # 🔒 valida presença de metadata CORRETA por tipo
         ext = os.path.splitext(origin_cached_path)[1].lower()
 
-        has_sha = os.path.exists(origin_cached_path + ".sha256")
-        has_syncado = os.path.exists(origin_cached_path + ".syncado")
+        has_sha = os.path.exists(origin_cached_path + '.sha256')
+        has_syncado = os.path.exists(origin_cached_path + '.syncado')
 
         # =========================================================
         # 🔒 NOVA REGRA: HASH DIRETO (linha 2 OU linha 4) SUBSTITUI METADATA
@@ -778,13 +932,16 @@ def process_single_syncdownload(path, dry_run):
 
         try:
             if expected_hash:
-                current_hash = hash_file(origin_cached_path, "Cache")
-                if current_hash and current_hash == expected_hash.lower():
+                current_hash = hash_file(origin_cached_path, 'Cache')
+                if (
+                    current_hash
+                    and current_hash == expected_hash.lower()
+                ):
                     hash_override_valid = True
 
             elif remote_hash_url:
                 remote_hash = fetch_remote_hash(remote_hash_url)
-                current_hash = hash_file(origin_cached_path, "Cache")
+                current_hash = hash_file(origin_cached_path, 'Cache')
 
                 if current_hash and current_hash == remote_hash:
                     hash_override_valid = True
@@ -793,20 +950,29 @@ def process_single_syncdownload(path, dry_run):
             hash_override_valid = False
 
         if hash_override_valid:
-            show_message(f"Cache válido via hash direto (sem metadata): {filename}", "k")
+            show_message(
+                f'Cache válido via hash direto (sem metadata): {filename}',
+                'k',
+            )
             valid_metadata = True
 
         else:
-            if ext in (".iso", ".img"):
+            if ext in ('.iso', '.img'):
                 if has_sha:
                     valid_metadata = True
                 else:
-                    show_message(f"Cache sem .sha256 → inválido (tratado como inexistente): {filename}", "w")
+                    show_message(
+                        f'Cache sem .sha256 → inválido (tratado como inexistente): {filename}',
+                        'w',
+                    )
             else:
                 if has_syncado:
                     valid_metadata = True
                 else:
-                    show_message(f"Cache sem .syncado → inválido (tratado como inexistente): {filename}", "w")
+                    show_message(
+                        f'Cache sem .syncado → inválido (tratado como inexistente): {filename}',
+                        'w',
+                    )
 
         # =========================================================
         # 🔒 FORÇA REPROCESSAMENTO COMO SE NÃO EXISTISSE
@@ -814,12 +980,14 @@ def process_single_syncdownload(path, dry_run):
         if not valid_metadata:
             try:
                 os.remove(origin_cached_path)
-                show_message(f"Cache inválido removido: {filename}", "w")
+                show_message(
+                    f'Cache inválido removido: {filename}', 'w'
+                )
             except Exception:
                 pass
 
             # 🔒 remove qualquer metadata residual
-            for ext_meta in (".sha256", ".syncado"):
+            for ext_meta in ('.sha256', '.syncado'):
                 try:
                     meta_path = origin_cached_path + ext_meta
                     if os.path.exists(meta_path):
@@ -830,14 +998,23 @@ def process_single_syncdownload(path, dry_run):
             # =========================================================
             # 🔒 FORÇA DOWNLOAD SEM USAR CACHE (SEM QUEBRAR FLUXO)
             # =========================================================
-            show_message(f"Forçando reprocessamento imediato: {filename}", "i")
+            show_message(
+                f'Forçando reprocessamento imediato: {filename}', 'i'
+            )
 
-            need_download = True      
+            need_download = True
 
             # 🔒 segue fluxo normal (download obrigatório)
         else:
-            if is_cached_file_valid(origin_cached_path, expected_hash) or hash_override_valid:
-                show_message(f"Cache válido na origem: {filename}", "k")
+            if (
+                is_cached_file_valid(
+                    origin_cached_path, expected_hash
+                )
+                or hash_override_valid
+            ):
+                show_message(
+                    f'Cache válido na origem: {filename}', 'k'
+                )
 
                 # =========================================================
                 # 🔒 STATUS DO DESTINO (COM SUPORTE A HASH DIRETO)
@@ -849,12 +1026,22 @@ def process_single_syncdownload(path, dry_run):
                 if dest_exists:
                     try:
                         if expected_hash:
-                            dest_valid = hash_file(final_dest_path, "Destino") == expected_hash.lower()
+                            dest_valid = (
+                                hash_file(final_dest_path, 'Destino')
+                                == expected_hash.lower()
+                            )
                         elif remote_hash_url:
-                            remote_hash = fetch_remote_hash(remote_hash_url)
-                            dest_valid = hash_file(final_dest_path, "Destino") == remote_hash
+                            remote_hash = fetch_remote_hash(
+                                remote_hash_url
+                            )
+                            dest_valid = (
+                                hash_file(final_dest_path, 'Destino')
+                                == remote_hash
+                            )
                         else:
-                            dest_valid = is_cached_file_valid(final_dest_path, expected_hash)
+                            dest_valid = is_cached_file_valid(
+                                final_dest_path, expected_hash
+                            )
                     except Exception:
                         dest_valid = False
 
@@ -862,71 +1049,109 @@ def process_single_syncdownload(path, dry_run):
                 # 🔒 REGRA CRÍTICA: BASTA UM DOS DOIS ESTAR VÁLIDO
                 # =========================================================
                 if dest_valid:
-                    show_message(f"Cache válido no destino: {filename}", "k")
-                    show_message(f"Sincronizado (sem ação): {filename}", "d")
-                    show_message(f"Sync completo: {filename}", "s")
+                    show_message(
+                        f'Cache válido no destino: {filename}', 'k'
+                    )
+                    show_message(
+                        f'Sincronizado (sem ação): {filename}', 'd'
+                    )
+                    show_message(f'Sync completo: {filename}', 's')
                     return
 
                 if dest_exists and not dest_valid:
-                    show_message(f"Destino inválido → será sobrescrito via espelhamento: {filename}", "w")
+                    show_message(
+                        f'Destino inválido → será sobrescrito via espelhamento: {filename}',
+                        'w',
+                    )
                 elif not dest_exists:
-                    show_message(f"Destino inexistente → cópia necessária: {filename}", "i")
+                    show_message(
+                        f'Destino inexistente → cópia necessária: {filename}',
+                        'i',
+                    )
 
                 # =========================================================
                 # 🔒 ESPALHAMENTO (SEM DOWNLOAD)
                 # =========================================================
-                show_message(f"Download não necessário (hash já válido): {filename}", "d")
+                show_message(
+                    f'Download não necessário (hash já válido): {filename}',
+                    'd',
+                )
 
                 if not dry_run:
-                    copy_file_with_progress(origin_cached_path, final_dest_path)
+                    copy_file_with_progress(
+                        origin_cached_path, final_dest_path
+                    )
 
                     # 🔒 gera metadata se inexistente
-                    generate_sync_metadata(origin_cached_path, resolved["url"])
+                    generate_sync_metadata(
+                        origin_cached_path, resolved['url']
+                    )
 
-                    for ext_meta in (".sha256", ".syncado"):
+                    for ext_meta in ('.sha256', '.syncado'):
                         src_meta = origin_cached_path + ext_meta
                         dst_meta = final_dest_path + ext_meta
 
                         if os.path.exists(src_meta):
                             try:
-                                copy_file_with_progress(src_meta, dst_meta)
+                                copy_file_with_progress(
+                                    src_meta, dst_meta
+                                )
                             except Exception:
                                 pass
 
-                    show_message(f"Arquivo sincronizado via espelhamento: {filename}", "s")
-                    show_message(f"Sync completo: {filename}", "s")
+                    show_message(
+                        f'Arquivo sincronizado via espelhamento: {filename}',
+                        's',
+                    )
+                    show_message(f'Sync completo: {filename}', 's')
 
                     if os.path.exists(final_dest_path):
                         purge_similar_installers_safe(
                             dest_dir,
                             filename,
-                            canonical_name=resolved.get("custom_filename")
+                            canonical_name=resolved.get(
+                                'custom_filename'
+                            ),
                         )
                 else:
-                    show_message(f"[DRY-RUN] Copiaria do cache: {filename}", "d")
+                    show_message(
+                        f'[DRY-RUN] Copiaria do cache: {filename}',
+                        'd',
+                    )
 
                 return
             else:
-                show_message(f"Cache corrompido na origem → removendo: {filename}", "w")
+                show_message(
+                    f'Cache corrompido na origem → removendo: {filename}',
+                    'w',
+                )
 
                 try:
                     os.remove(origin_cached_path)
-                    show_message(f"Cache removido: {filename}", "w")
+                    show_message(f'Cache removido: {filename}', 'w')
                 except Exception:
                     pass
 
                 # 🔒 remove metadata associada
                 try:
-                    if os.path.exists(origin_cached_path + ".sha256"):
-                        os.remove(origin_cached_path + ".sha256")
-                        show_message(f"Metadado .sha256 do cache removido: {filename}", "w")
+                    if os.path.exists(origin_cached_path + '.sha256'):
+                        os.remove(origin_cached_path + '.sha256')
+                        show_message(
+                            f'Metadado .sha256 do cache removido: {filename}',
+                            'w',
+                        )
                 except Exception:
                     pass
 
                 try:
-                    if os.path.exists(origin_cached_path + ".syncado"):
-                        os.remove(origin_cached_path + ".syncado")
-                        show_message(f"Metadado .syncado do cache removido: {filename}", "w")
+                    if os.path.exists(
+                        origin_cached_path + '.syncado'
+                    ):
+                        os.remove(origin_cached_path + '.syncado')
+                        show_message(
+                            f'Metadado .syncado do cache removido: {filename}',
+                            'w',
+                        )
 
                 except Exception:
                     pass
@@ -937,8 +1162,8 @@ def process_single_syncdownload(path, dry_run):
     else:
         need_download = manage_sync_metadata(
             final_dest_path=final_dest_path,
-            url=final_url or resolved["url"],
-            expected_hash=expected_hash
+            url=final_url or resolved['url'],
+            expected_hash=expected_hash,
         )
 
     if not need_download:
@@ -946,7 +1171,9 @@ def process_single_syncdownload(path, dry_run):
 
     # === DRY-RUN: NÃO EXECUTA DOWNLOAD ===
     if dry_run:
-        show_message(f"[DRY-RUN] Baixaria: {filename} ({final_url})", "d")
+        show_message(
+            f'[DRY-RUN] Baixaria: {filename} ({final_url})', 'd'
+        )
         return
 
     # =========================================================
@@ -956,45 +1183,61 @@ def process_single_syncdownload(path, dry_run):
         cached_path = download_registry[final_url]
 
         if os.path.exists(cached_path):
-            show_message(f"Reuso de download (duplicado): {filename}", "w")
+            show_message(
+                f'Reuso de download (duplicado): {filename}', 'w'
+            )
 
             try:
                 os.makedirs(dest_dir, exist_ok=True)
 
-                if not os.path.exists(final_dest_path) or not is_cached_file_valid(final_dest_path, expected_hash):
-                    copy_file_with_progress(cached_path, final_dest_path)
+                if not os.path.exists(
+                    final_dest_path
+                ) or not is_cached_file_valid(
+                    final_dest_path, expected_hash
+                ):
+                    copy_file_with_progress(
+                        cached_path, final_dest_path
+                    )
 
                 if os.path.exists(final_dest_path):
                     purge_similar_installers_safe(
                         dest_dir,
                         filename,
-                        canonical_name=resolved.get("custom_filename")
+                        canonical_name=resolved.get(
+                            'custom_filename'
+                        ),
                     )
 
                 return
 
             except Exception as e:
-                show_message(f"Falha no reuso de download: {e}", "e")
+                show_message(f'Falha no reuso de download: {e}', 'e')
 
     # === DOWNLOAD (SEMPRE PRIMEIRO PARA CACHE NA ORIGEM) ===
     try:
-        os.makedirs(os.path.dirname(origin_cached_path), exist_ok=True)
+        os.makedirs(
+            os.path.dirname(origin_cached_path), exist_ok=True
+        )
         os.makedirs(dest_dir, exist_ok=True)
 
         # 🔒 download vai SEMPRE para o cache (origem)
         download_file_with_progress(final_url, origin_cached_path)
 
-        show_message(f"Download concluído (cache): {filename}", "+")
+        show_message(f'Download concluído (cache): {filename}', '+')
 
         # 🔒 registra download para reutilização futura (aponta para cache)
         download_registry[final_url] = origin_cached_path
 
         # 🔒 copia do cache → destino (NUNCA download direto no destino)
-        if not os.path.exists(final_dest_path) or not is_cached_file_valid(final_dest_path, expected_hash):
-            copy_file_with_progress(origin_cached_path, final_dest_path)
+        if not os.path.exists(
+            final_dest_path
+        ) or not is_cached_file_valid(final_dest_path, expected_hash):
+            copy_file_with_progress(
+                origin_cached_path, final_dest_path
+            )
 
     except Exception as e:
-        show_message(f"Erro no download: {filename} -> {e}", "e")
+        show_message(f'Erro no download: {filename} -> {e}', 'e')
 
         if path not in failed_files:
             failed_files.append(path)
@@ -1004,28 +1247,39 @@ def process_single_syncdownload(path, dry_run):
     # =========================================================
     # 🔒 PIPELINE .gz (validação + possível descompressão)
     # =========================================================
-    is_gz = final_dest_path.lower().endswith(".gz")
+    is_gz = final_dest_path.lower().endswith('.gz')
 
     validated = False
 
     # 🔒 1. tenta validar o .gz diretamente
     if is_gz:
         if is_cached_file_valid(final_dest_path, expected_hash):
-             # 🔒 .gz é o artefato final válido → NÃO remover
+            # 🔒 .gz é o artefato final válido → NÃO remover
             validated = True
         else:
-            show_message(f".gz não confere hash → tentando conteúdo: {filename}", "w")
+            show_message(
+                f'.gz não confere hash → tentando conteúdo: {filename}',
+                'w',
+            )
 
             try:
                 decompressed_path = final_dest_path[:-3]  # remove .gz
 
-                with gzip.open(final_dest_path, 'rb') as f_in, open(decompressed_path, 'wb') as f_out:
+                with (
+                    gzip.open(final_dest_path, 'rb') as f_in,
+                    open(decompressed_path, 'wb') as f_out,
+                ):
                     shutil.copyfileobj(f_in, f_out)
 
                 # 🔒 valida conteúdo descompactado
-                if is_cached_file_valid(decompressed_path, expected_hash):
-                    show_message(f"Hash válido após descompressão: {filename}", "k")
-                    
+                if is_cached_file_valid(
+                    decompressed_path, expected_hash
+                ):
+                    show_message(
+                        f'Hash válido após descompressão: {filename}',
+                        'k',
+                    )
+
                     try:
                         # 🔒 remove .gz somente após validação do conteúdo
                         os.remove(final_dest_path)
@@ -1040,11 +1294,14 @@ def process_single_syncdownload(path, dry_run):
                     # =========================================================
                     # 🔒 METADATA ESPECIAL (.gz → conteúdo)
                     # =========================================================
-                    try:                        
+                    try:
+
                         def _hash_file(p):
                             h = hashlib.sha256()
-                            with open(p, "rb") as f:
-                                for chunk in iter(lambda: f.read(65536), b""):
+                            with open(p, 'rb') as f:
+                                for chunk in iter(
+                                    lambda: f.read(65536), b''
+                                ):
                                     h.update(chunk)
                             return h.hexdigest()
 
@@ -1058,13 +1315,18 @@ def process_single_syncdownload(path, dry_run):
                             if not os.path.isfile(full):
                                 continue
 
-                            if f.lower().endswith((".sha256", ".syncado", ".gz")):
+                            if f.lower().endswith(
+                                ('.sha256', '.syncado', '.gz')
+                            ):
                                 continue
 
                             candidates.append(full)
 
                         if candidates:
-                            target_file = max(candidates, key=lambda p: os.path.getsize(p))
+                            target_file = max(
+                                candidates,
+                                key=lambda p: os.path.getsize(p),
+                            )
                         else:
                             target_file = final_dest_path
 
@@ -1078,20 +1340,30 @@ def process_single_syncdownload(path, dry_run):
                         if expected_hash:
                             gz_hash = expected_hash.lower()
 
-                        sha_path = target_file + ".sha256"
+                        sha_path = target_file + '.sha256'
 
-                        with open(sha_path, "w", encoding="utf-8") as f:
+                        with open(
+                            sha_path, 'w', encoding='utf-8'
+                        ) as f:
                             # linha 1 → conteúdo real
-                            f.write(f"{extracted_hash}\n")
+                            f.write(f'{extracted_hash}\n')
 
                             # linha 2 → vínculo com .gz (hash original + URL)
                             if gz_hash:
-                                f.write(f"{gz_hash}  {resolved['url']}\n")
+                                f.write(
+                                    f'{gz_hash}  {resolved["url"]}\n'
+                                )
 
                     except Exception as e:
-                        show_message(f"Falha ao gerar .sha256 especial: {e}", "e")                    
+                        show_message(
+                            f'Falha ao gerar .sha256 especial: {e}',
+                            'e',
+                        )
                 else:
-                    show_message(f"Conteúdo descompactado inválido: {filename}", "w")
+                    show_message(
+                        f'Conteúdo descompactado inválido: {filename}',
+                        'w',
+                    )
 
                     try:
                         os.remove(decompressed_path)
@@ -1099,26 +1371,33 @@ def process_single_syncdownload(path, dry_run):
                         pass
 
             except Exception as e:
-                show_message(f"Falha ao descompactar .gz: {e}", "e")
+                show_message(f'Falha ao descompactar .gz: {e}', 'e')
 
     # 🔒 fallback padrão (não gz ou gz válido direto)
     if not validated:
         if not is_cached_file_valid(final_dest_path, expected_hash):
-            show_message(f"Download inválido (hash/tamanho): {filename}", "w")
+            show_message(
+                f'Download inválido (hash/tamanho): {filename}', 'w'
+            )
             try:
                 os.remove(final_dest_path)
             except:
                 pass
             return
-    
+
     # =========================================================
     # 🔒 PADRONIZAÇÃO DE BASENAME (linha 3)
     # =========================================================
-    canonical = resolved.get("custom_filename")
+    canonical = resolved.get('custom_filename')
 
     # 🔒 BLOQUEIO DE PLACEHOLDER NÃO RESOLVIDO
-    if isinstance(canonical, str) and ("{}" in canonical or "{" in canonical):
-        show_message(f"Canonical inválido (placeholder não resolvido): {canonical}", "w")
+    if isinstance(canonical, str) and (
+        '{}' in canonical or '{' in canonical
+    ):
+        show_message(
+            f'Canonical inválido (placeholder não resolvido): {canonical}',
+            'w',
+        )
         canonical = None
 
     if canonical:
@@ -1134,7 +1413,7 @@ def process_single_syncdownload(path, dry_run):
                 final_dest_path = new_path
                 filename = new_name
             except Exception as e:
-                show_message(f"Falha ao padronizar nome: {e}", "e")   
+                show_message(f'Falha ao padronizar nome: {e}', 'e')
 
     # =========================================================
     # 🔒 MULTI-ARQUIVOS (mesmo basename)
@@ -1157,11 +1436,13 @@ def process_single_syncdownload(path, dry_run):
             candidate_path = os.path.join(dest_dir, candidate)
 
             try:
-                if normalize_product_name(f) == normalize_product_name(filename):
+                if normalize_product_name(
+                    f
+                ) == normalize_product_name(filename):
                     if full != candidate_path:
                         os.rename(full, candidate_path)
             except:
-                pass                 
+                pass
 
     # =========================================================
     # 🔒 VALIDAÇÃO OBRIGATÓRIA — HASH REMOTO (linha 4)
@@ -1169,26 +1450,30 @@ def process_single_syncdownload(path, dry_run):
     if remote_hash_url:
         try:
             # 🔒 fase preremotehash
-            run_phase("preremotehash")
-        
+            run_phase('preremotehash')
+
             resolved_hash_input = resolve_if_dsl(
-                remote_hash_url,
-                context="remote_hash_url"
+                remote_hash_url, context='remote_hash_url'
             )
 
             # 🔒 se DSL retornar hash direto → usa direto
-            if isinstance(resolved_hash_input, str) and re.fullmatch(r'[a-fA-F0-9]{64}', resolved_hash_input.strip()):
+            if isinstance(resolved_hash_input, str) and re.fullmatch(
+                r'[a-fA-F0-9]{64}', resolved_hash_input.strip()
+            ):
                 remote_hash = resolved_hash_input.strip().lower()
             else:
                 remote_hash = fetch_remote_hash(resolved_hash_input)
 
             # 🔒 fase posremotehash
-            run_phase("posremotehash")
+            run_phase('posremotehash')
 
-            local_hash = hash_file(final_dest_path, "Destino")
+            local_hash = hash_file(final_dest_path, 'Destino')
 
             if local_hash != remote_hash:
-                show_message(f"Hash remoto divergente → invalidando: {filename}", "w")
+                show_message(
+                    f'Hash remoto divergente → invalidando: {filename}',
+                    'w',
+                )
 
                 # 🔒 remove destino
                 try:
@@ -1204,9 +1489,11 @@ def process_single_syncdownload(path, dry_run):
                     pass
 
                 # 🔒 remove metadata
-                for ext_meta in (".sha256", ".syncado"):
+                for ext_meta in ('.sha256', '.syncado'):
                     try:
-                        if os.path.exists(origin_cached_path + ext_meta):
+                        if os.path.exists(
+                            origin_cached_path + ext_meta
+                        ):
                             os.remove(origin_cached_path + ext_meta)
                     except:
                         pass
@@ -1217,30 +1504,31 @@ def process_single_syncdownload(path, dry_run):
 
                 return
 
-            show_message(f"Hash remoto válido: {filename}", "k")            
+            show_message(f'Hash remoto válido: {filename}', 'k')
 
         except Exception as e:
-            show_message(f"Falha na validação de hash remoto: {e}", "e")
+            show_message(
+                f'Falha na validação de hash remoto: {e}', 'e'
+            )
 
             # 🔒 abort conforme contrato
             if path not in failed_files:
                 failed_files.append(path)
 
-            return    
+            return
 
     # === PURGE CONTROLADO ===
     purge_similar_installers_safe(
         dest_dir,
         filename,
-        canonical_name=resolved.get("custom_filename")
+        canonical_name=resolved.get('custom_filename'),
     )
 
     # =========================================================
     # 🔒 METADATA PRIMEIRO NO CACHE (ORIGEM)
     # =========================================================
     generate_sync_metadata(
-        final_dest_path=origin_cached_path,
-        url=resolved["url"]
+        final_dest_path=origin_cached_path, url=resolved['url']
     )
 
     # =========================================================
@@ -1249,11 +1537,15 @@ def process_single_syncdownload(path, dry_run):
     # === CACHE NA ORIGEM ===
     try:
         # arquivo
-        if not os.path.exists(final_dest_path) or not is_cached_file_valid(final_dest_path, expected_hash):
-            copy_file_with_progress(origin_cached_path, final_dest_path)
+        if not os.path.exists(
+            final_dest_path
+        ) or not is_cached_file_valid(final_dest_path, expected_hash):
+            copy_file_with_progress(
+                origin_cached_path, final_dest_path
+            )
 
         # metadata associada (se existir)
-        for ext_meta in (".sha256", ".syncado"):
+        for ext_meta in ('.sha256', '.syncado'):
             src_meta = origin_cached_path + ext_meta
             dst_meta = final_dest_path + ext_meta
 
@@ -1264,9 +1556,12 @@ def process_single_syncdownload(path, dry_run):
                     pass
 
         # 🔒 fase end (arquivo já disponível)
-        run_phase("end", final_dest_path)
+        run_phase('end', final_dest_path)
 
-        show_message(f"Sync completo: {filename}", "s")
+        show_message(f'Sync completo: {filename}', 's')
 
     except Exception as e:
-        show_message(f"Inconsistência: falha ao propagar cache→destino: {e}", "e")
+        show_message(
+            f'Inconsistência: falha ao propagar cache→destino: {e}',
+            'e',
+        )

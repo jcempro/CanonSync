@@ -14,7 +14,7 @@ PIPELINE (ordem imutável)
 2. Cópia origem→destino
 3. Processamento .syncdownload (download + cache na origem)
 4. Retentativa (mesma ordem, síncrono)
-5. Pós-processamento (atributos)            
+5. Pós-processamento (atributos)
 
 PRINCÍPIOS GLOBAIS
 ==================
@@ -120,7 +120,7 @@ Blocos definidos por marcador de início de linha:
 
 >>>ext[,fase]
 
-Onde: 
+Onde:
  - Início: `>>>ext[,fase]`
  - Fim:   Próximo `>>>ext` ou fim do arquivo
 
@@ -135,7 +135,7 @@ Execução:
   - nome aleatório + extensão definida
   - escrever conteúdo integral do bloco sem o `>>>ext`
   - executar passando:
-    1º parâmetro → fullpath do .syncdownload    
+    1º parâmetro → fullpath do .syncdownload
     2º parâmetro → nomeação do arquivo local (basename.ext) - (SE já descoberto pelo script gestor
     3º parâmetro → fullpath do arquivo baixado (SE já baixado)
 - Subcripts não participam da decisão de integridade
@@ -146,7 +146,7 @@ Execução:
 PIPELINE DE DOWNLOAD
 ====================
 - Descompactação: Se o arquivo terminar em .ext.gz, descompacte-o e exclua o original após extração e validação.
-- Validação de Hash: Valide o hash (conforme linhas 2 ou 4) primeiramente no arquivo .gz. 
+- Validação de Hash: Valide o hash (conforme linhas 2 ou 4) primeiramente no arquivo .gz.
                      Se falhar, valide no arquivo descompactado de maior tamanho.
                      Persistindo o erro, descarte o download e force-o novamente.
 - Padronização: Renomeie todos os arquivos extraídos para o basename da linha 3, mantendo
@@ -161,7 +161,7 @@ PIPELINE DE DOWNLOAD
     - A validação deve:
         - primeiro tentar o hash do .gz
         - se falhar, validar o conteúdo descompactado
-    - O .syncdownload não deve ser modificado para refletir essa conversão.    
+    - O .syncdownload não deve ser modificado para refletir essa conversão.
 
 ETAPA 4 — RETENTATIVA
 =====================
@@ -214,7 +214,7 @@ RESTRIÇÕES
 - Execução de script não pode interferir na integridade do sync
 """
 
-import os    
+import os
 import sys
 import codecs
 import shutil
@@ -232,7 +232,14 @@ from datetime import datetime
 import random
 import gzip
 import json
-from rich.progress import Progress, TextColumn, BarColumn, DownloadColumn, TransferSpeedColumn, TimeRemainingColumn
+from rich.progress import (
+    Progress,
+    TextColumn,
+    BarColumn,
+    DownloadColumn,
+    TransferSpeedColumn,
+    TimeRemainingColumn,
+)
 import ctypes
 
 PROVIDERS = {}
@@ -244,30 +251,40 @@ PARSER_CACHE_TTL = 60  # segundos
 
 # Registro seguro de providers (evita NameError)
 try:
-    PROVIDERS["github.com"] = resolve_github
+    PROVIDERS['github.com'] = resolve_github
 except NameError:
     pass  # provider não disponível
 
 __IGNORAR_GITHUB = False
 
 # Variável global para o ID da execução
-ID_EXECUCAO = ''.join(random.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(3))
+ID_EXECUCAO = ''.join(
+    random.choice('ABCDEFGHJKLMNPQRSTUVWXYZ23456789')
+    for _ in range(3)
+)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_FILE = os.path.join(SCRIPT_DIR, "sync.log")
+LOG_FILE = os.path.join(SCRIPT_DIR, 'sync.log')
 MAX_LOG_SIZE = 5 * 1024 * 1024  # 5 MB
 
 # evita falso positivo em arquivos pequenos (boot, configs embutidos, etc.)
 MIN_SIZE_BYTES = 2 * 1024 * 1024  # 2MB
 
-SyncDonwloadExtensions = ["exe", "msi", "iso", "img", "img.gz", "iso.gz"]
+SyncDonwloadExtensions = [
+    'exe',
+    'msi',
+    'iso',
+    'img',
+    'img.gz',
+    'iso.gz',
+]
 
 _log_iniciado = False
 retent_loop_count = 0
 
 # Listas de controle
-verifieds = []       # Arquivos/pastas já verificados
-failed_files = []    # Arquivos que falharam na cópia
+verifieds = []  # Arquivos/pastas já verificados
+failed_files = []  # Arquivos que falharam na cópia
 
 sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
 sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
@@ -288,27 +305,29 @@ sync_resolve_cache = {}
 download_registry = {}
 
 # Caminhos
-destination_path = "?"
-ORIGIN_PATH = os.path.normpath(SCRIPT_DIR).rstrip(os.path.sep) + os.path.sep
+destination_path = '?'
+ORIGIN_PATH = (
+    os.path.normpath(SCRIPT_DIR).rstrip(os.path.sep) + os.path.sep
+)
 
 # Padrões fixos que a ignorar
 DEFAULT_IGNORED = (
-    r"(\.(git|vscode|trunk|github)(\\|/|$))|"          # Pastas de dev
-    r"(\.(log|tmp|eslintrc\.json|gitattributes|gitignore|prettierrc|prettierignore)$)|" # Extensões/Arquivos
-    r"(API_JSON)$|" # Pastas diversas
-    r"(\.fseventsd$|\.Trashes$|\.Spotlight$|\.AppleDouble$|" # Pastas de sistema    
-    r"\.TemporaryItems$|\$Recycle\.Bin$|Recycler$)"    
+    r'(\.(git|vscode|trunk|github)(\\|/|$))|'  # Pastas de dev
+    r'(\.(log|tmp|eslintrc\.json|gitattributes|gitignore|prettierrc|prettierignore)$)|'  # Extensões/Arquivos
+    r'(API_JSON)$|'  # Pastas diversas
+    r'(\.fseventsd$|\.Trashes$|\.Spotlight$|\.AppleDouble$|'  # Pastas de sistema
+    r'\.TemporaryItems$|\$Recycle\.Bin$|Recycler$)'
 )
 
 # Verifica se há argumentos via CLI
-if any(arg.startswith("ignore=") for arg in sys.argv):
+if any(arg.startswith('ignore=') for arg in sys.argv):
     cli_ignored = '|'.join(
-        re.escape(item) + r"$"
+        re.escape(item) + r'$'
         for arg in sys.argv
-        if arg.startswith("ignore=")
+        if arg.startswith('ignore=')
         for item in arg.split('=', 1)[1].split(',')
     )
-    IGNORED_PATHS = f"({DEFAULT_IGNORED}|{cli_ignored})"
+    IGNORED_PATHS = f'({DEFAULT_IGNORED}|{cli_ignored})'
 else:
     IGNORED_PATHS = DEFAULT_IGNORED
 
@@ -317,27 +336,50 @@ _product_cache = {}
 
 # Alias canônicos
 PRODUCT_ALIASES = {
-    "7zip": "7z",
-    "7z": "7z",
-    "pwsh": "powershell",
-    "powershell": "powershell",
+    '7zip': '7z',
+    '7z': '7z',
+    'pwsh': 'powershell',
+    'powershell': 'powershell',
 }
 
 # Vendors conhecidos (ignorados)
 KNOWN_VENDORS = {
-    "microsoft", "oracle", "google", "adobe", "mozilla",
-    "github", "gitlab"
+    'microsoft',
+    'oracle',
+    'google',
+    'adobe',
+    'mozilla',
+    'github',
+    'gitlab',
 }
 
 # Ruídos
 NOISE_TOKENS = {
-    "x86", "x64", "arm32", "amd32", "arm64", "amd64",    
-    "arm", "win", "windows", "linux", "mac",
-    "setup", "installer", "install",
-    "release", "portable",
-    "rc", "beta", "alpha",
-    "msi", "exe", "zip", "live"
+    'x86',
+    'x64',
+    'arm32',
+    'amd32',
+    'arm64',
+    'amd64',
+    'arm',
+    'win',
+    'windows',
+    'linux',
+    'mac',
+    'setup',
+    'installer',
+    'install',
+    'release',
+    'portable',
+    'rc',
+    'beta',
+    'alpha',
+    'msi',
+    'exe',
+    'zip',
+    'live',
 }
+
 
 def resolve_provider(url):
     """resolve_provider(url)
@@ -346,11 +388,12 @@ def resolve_provider(url):
     - url (str): URL a ser resolvida.
     Retorno:
     - str: URL resolvida ou original.
-    """    
+    """
     for domain, handler in PROVIDERS.items():
         if domain in url:
             return handler(url)
     return url
+
 
 def retry_sync(fn, attempts=3, delay=1):
     """retry_sync(fn, attempts=3, delay=1)
@@ -361,7 +404,7 @@ def retry_sync(fn, attempts=3, delay=1):
     - delay (int): Delay entre tentativas (segundos).
     Retorno:
     - any: Resultado da função executada.
-    """    
+    """
     for i in range(attempts):
         try:
             return fn()
@@ -372,7 +415,10 @@ def retry_sync(fn, attempts=3, delay=1):
         except Exception:
             raise
 
-def show_message(txt, tipo=None, cor="white", bold=True, inline=False):
+
+def show_message(
+    txt, tipo=None, cor='white', bold=True, inline=False
+):
     """show_message(txt, tipo=None, cor="white", bold=True, inline=False)
     Descrição: Exibe mensagem formatada e registra log.
     Parâmetros:
@@ -387,8 +433,12 @@ def show_message(txt, tipo=None, cor="white", bold=True, inline=False):
     global _log_iniciado, retent_loop_count
 
     def limpar_formatacao_rich(mensagem):
-        mensagem = re.sub(r'\[(\w[^\]]*)\](.*?)\[/\1\]', r'\2', mensagem)
-        mensagem = re.sub(r'\[(\w[^\]]*)\](.*?)\[/\]', r'\2', mensagem)
+        mensagem = re.sub(
+            r'\[(\w[^\]]*)\](.*?)\[/\1\]', r'\2', mensagem
+        )
+        mensagem = re.sub(
+            r'\[(\w[^\]]*)\](.*?)\[/\]', r'\2', mensagem
+        )
         return mensagem.strip()
 
     def truncar_log_se_necessario():
@@ -401,66 +451,91 @@ def show_message(txt, tipo=None, cor="white", bold=True, inline=False):
             f.seek(-MAX_LOG_SIZE, os.SEEK_END)
             conteudo = f.read()
             primeiro_nl = conteudo.find(b'\n')
-            conteudo = conteudo[primeiro_nl + 1:] if primeiro_nl != -1 else conteudo
+            conteudo = (
+                conteudo[primeiro_nl + 1 :]
+                if primeiro_nl != -1
+                else conteudo
+            )
         with open(LOG_FILE, 'wb') as f:
             f.write(conteudo)
 
     tipos_demo = {
-        "i": ("I", "cyan"), "e": ("E", "bright_magenta"), "w": ("W", "yellow"),
-        "d": ("D", "bright_black"), "s": ("✓", "green"), "k": ("✓", "dodger_blue2"),
-        "+": ("+", "bright_green"), "-": ("-", "bright_red"),
+        'i': ('I', 'cyan'),
+        'e': ('E', 'bright_magenta'),
+        'w': ('W', 'yellow'),
+        'd': ('D', 'bright_black'),
+        's': ('✓', 'green'),
+        'k': ('✓', 'dodger_blue2'),
+        '+': ('+', 'bright_green'),
+        '-': ('-', 'bright_red'),
     }
 
     aliases = {
-        "info": "i", "error": "e", "warn": "w", "warning": "w",
-        "debug": "d", "success": "s", "sucesso": "s",
-        "ok": "k", "added": "+", "add": "+",
-        "removed": "-", "remove": "-", "del": "-"
+        'info': 'i',
+        'error': 'e',
+        'warn': 'w',
+        'warning': 'w',
+        'debug': 'd',
+        'success': 's',
+        'sucesso': 's',
+        'ok': 'k',
+        'added': '+',
+        'add': '+',
+        'removed': '-',
+        'remove': '-',
+        'del': '-',
     }
 
     if tipo is not None:
         tipo_str = aliases.get(str(tipo).lower(), str(tipo).lower())
-        marcador, cor_definida = tipos_demo.get(tipo_str, ("?", "white"))
+        marcador, cor_definida = tipos_demo.get(
+            tipo_str, ('?', 'white')
+        )
         cor = cor_definida
-        txt = f"[{marcador}] {txt}"
+        txt = f'[{marcador}] {txt}'
 
     if retent_loop_count > 0:
-        txt = f"(Retry: {retent_loop_count}) {txt}"
+        txt = f'(Retry: {retent_loop_count}) {txt}'
 
     style_extra, base_color = _normalize_color(cor)
 
     # 🔒 evita duplicação de bold
     final_style = []
 
-    if bold and "bold" not in style_extra:
-        final_style.append("bold")
+    if bold and 'bold' not in style_extra:
+        final_style.append('bold')
 
     if style_extra:
         final_style.append(style_extra)
 
     final_style.append(base_color)
 
-    style = " ".join(final_style).strip()
+    style = ' '.join(final_style).strip()
 
     if inline:
         terminal_width = os.get_terminal_size().columns
         console.print(' ' * terminal_width, end='\r')
-    
-    console.print(f"[{style}]{txt}[/{style}]", end=f"{'\r' if inline else '\n'}")
+
+    console.print(
+        f'[{style}]{txt}[/{style}]', end=f'{"\r" if inline else "\n"}'
+    )
 
     mensagem_limpa = limpar_formatacao_rich(txt)
-    timestamp = datetime.now().strftime("[%H:%M:%S] ")
+    timestamp = datetime.now().strftime('[%H:%M:%S] ')
     truncar_log_se_necessario()
-    
+
     with open(LOG_FILE, 'a', encoding='utf-8') as f_log:
         if not _log_iniciado:
-            f_log.write("\n")
-            f_log.write(f"[   ] {timestamp} " + "-" * 40 + "\n")
-            f_log.write(f"[   ] {timestamp} Início execução ID '{ID_EXECUCAO}', {datetime.now().strftime('%Y-%m-%d')}\n")
+            f_log.write('\n')
+            f_log.write(f'[   ] {timestamp} ' + '-' * 40 + '\n')
+            f_log.write(
+                f"[   ] {timestamp} Início execução ID '{ID_EXECUCAO}', {datetime.now().strftime('%Y-%m-%d')}\n"
+            )
             _log_iniciado = True
-        f_log.write(f"[{ID_EXECUCAO}] {timestamp} {mensagem_limpa}\n")
+        f_log.write(f'[{ID_EXECUCAO}] {timestamp} {mensagem_limpa}\n')
 
-def show_inline(txt, tipo, cor="white", bold=True):
+
+def show_inline(txt, tipo, cor='white', bold=True):
     """show_inline(txt, tipo, cor="white", bold=True)
     Descrição: Exibe mensagem inline no console.
     Parâmetros:
@@ -470,8 +545,9 @@ def show_inline(txt, tipo, cor="white", bold=True):
     - bold (bool): Aplica negrito.
     Retorno:
     - None
-    """    
+    """
     show_message(txt, tipo, cor, bold, True)
+
 
 def hash_file(filename, label):
     """
@@ -481,10 +557,12 @@ def hash_file(filename, label):
     - label (str): Rótulo para exibição.
     Retorno:
     - str|None: Hash calculado ou None em erro.
-    """    
-    filename = str(filename) if isinstance(filename, Path) else filename
+    """
+    filename = (
+        str(filename) if isinstance(filename, Path) else filename
+    )
     if os.path.isdir(filename):
-        return 1        
+        return 1
     cached_hash = hash_cache.get(filename)
     if cached_hash:
         return cached_hash
@@ -492,12 +570,18 @@ def hash_file(filename, label):
         file_size = os.path.getsize(filename)
         with open(filename, 'rb') as file:
             # Detecta se deve usar SHA256 (quando houver metadata ou validação crítica)
-            use_sha256 = filename.lower().endswith((".iso", ".img")) or os.path.exists(filename + ".sha256")
+            use_sha256 = filename.lower().endswith(
+                ('.iso', '.img')
+            ) or os.path.exists(filename + '.sha256')
 
-            hasher = hashlib.sha256() if use_sha256 else xxhash.xxh3_64()
-            file_name = os.path.basename(filename)  
-            with create_progress("bold yellow") as progress:
-                task = progress.add_task("", total=file_size, label=label, name=file_name)
+            hasher = (
+                hashlib.sha256() if use_sha256 else xxhash.xxh3_64()
+            )
+            file_name = os.path.basename(filename)
+            with create_progress('bold yellow') as progress:
+                task = progress.add_task(
+                    '', total=file_size, label=label, name=file_name
+                )
                 while chunk := file.read(65536):
                     hasher.update(chunk)
                     progress.update(task, advance=len(chunk))
@@ -505,8 +589,9 @@ def hash_file(filename, label):
         hash_cache[filename] = res
         return res.lower()
     except Exception as e:
-        show_message(f"Erro ao calcular hash de {filename}: {e}", "e")
+        show_message(f'Erro ao calcular hash de {filename}: {e}', 'e')
         return None
+
 
 def copy_file_with_progress(src, dst):
     """
@@ -520,12 +605,12 @@ def copy_file_with_progress(src, dst):
     file_size = os.path.getsize(src)
 
     with open(src, 'rb') as src_f, open(dst, 'wb') as dst_f:
-        with create_progress("green") as progress:
+        with create_progress('green') as progress:
             task = progress.add_task(
-                "",
+                '',
                 total=file_size,
                 name=os.path.basename(src),
-                op=get_op_icon("copy")
+                op=get_op_icon('copy'),
             )
 
             while chunk := src_f.read(65536):
@@ -538,13 +623,14 @@ def copy_file_with_progress(src, dst):
     except Exception:
         pass
 
+
 def _resolve_filename_from_url(url, fallback_path=None):
-    """    
+    """
     Descrição: Resolve nome final normalizado com extensão válida, sem duplicação e com base no nome canônico do produto.
     Garante:
     - Nome estável (ex: powershell.msi)
     - Não duplicação de extensão
-    - Compatibilidade com purge    
+    - Compatibilidade com purge
     - Nome fixado na terceira linha representa nome canônico do software
       para fins comparação (limpeza e purge), desconsiderando o conteúdo:
         1. terminações contidas em SyncDonwloadExtensions (incluindo o ponto)
@@ -572,26 +658,29 @@ def _resolve_filename_from_url(url, fallback_path=None):
     - url (str): URL do recurso.
     - fallback_path (str|None): Caminho alternativo.
     Retorno:
-    - str|None: Nome do arquivo resolvido.    
+    - str|None: Nome do arquivo resolvido.
 
     Retorno:
-    - str: Nome final do arquivo.   
+    - str: Nome final do arquivo.
     """
     filename = None
 
     # 1. URL
-    url_name = os.path.basename(url.split("?")[0])
+    url_name = os.path.basename(url.split('?')[0])
     if url_name:
         filename = url_name
 
     # 2. Header
     try:
-        
         req = urllib.request.Request(url, method='HEAD')
         with http_open(req) as response:
-            content_disposition = response.headers.get('Content-Disposition')
+            content_disposition = response.headers.get(
+                'Content-Disposition'
+            )
             if content_disposition:
-                match = re.search(r'filename="?([^"]+)"?', content_disposition)
+                match = re.search(
+                    r'filename="?([^"]+)"?', content_disposition
+                )
                 if match:
                     filename = match.group(1)
     except Exception:
@@ -600,10 +689,11 @@ def _resolve_filename_from_url(url, fallback_path=None):
     # 3. Fallback
     if not filename and fallback_path:
         base = os.path.basename(fallback_path)
-        if base.lower().endswith(".syncdownload"):
-            filename = base[:-len(".syncdownload")]
+        if base.lower().endswith('.syncdownload'):
+            filename = base[: -len('.syncdownload')]
 
-    return filename  
+    return filename
+
 
 def http_open(url_or_req, timeout=15):
     """
@@ -629,6 +719,7 @@ def http_open(url_or_req, timeout=15):
 
     return urllib.request.urlopen(req, timeout=timeout)
 
+
 def _resolve_effective_remote_name(url):
     """
     Resolve nome REAL do arquivo remoto com prioridade correta:
@@ -641,7 +732,7 @@ def _resolve_effective_remote_name(url):
         final_url, headers = resolve_final_url(url)
         effective_url = final_url or url
 
-        req = urllib.request.Request(effective_url, method="HEAD")
+        req = urllib.request.Request(effective_url, method='HEAD')
 
         with http_open(req) as response:
             headers = dict(response.headers)
@@ -649,31 +740,31 @@ def _resolve_effective_remote_name(url):
             # =====================================================
             # 1. HEADER (PRIORIDADE MÁXIMA)
             # =====================================================
-            cd = headers.get("Content-Disposition", "")
+            cd = headers.get('Content-Disposition', '')
             m = re.search(r'filename="?([^"]+)"?', cd)
 
             if m:
                 name = m.group(1)
                 if name:
                     return {
-                        "name": name,
-                        "source": "header",
-                        "headers": headers
+                        'name': name,
+                        'source': 'header',
+                        'headers': headers,
                     }
 
             # =====================================================
             # 2. URL FINAL
             # =====================================================
             final_url_resp = response.geturl()
-            name = os.path.basename(final_url_resp.split("?")[0])
+            name = os.path.basename(final_url_resp.split('?')[0])
 
             # 🔒 descarta nomes inválidos (UUID / download / vazio)
-            if name and name.lower() != "download":
+            if name and name.lower() != 'download':
                 if not re.match(r'^[0-9a-f\-]{20,}$', name.lower()):
                     return {
-                        "name": name,
-                        "source": "url",
-                        "headers": headers
+                        'name': name,
+                        'source': 'url',
+                        'headers': headers,
                     }
 
     except Exception:
@@ -685,13 +776,10 @@ def _resolve_effective_remote_name(url):
     fallback = _resolve_filename_from_url(url)
 
     if isinstance(fallback, str):
-        return {
-            "name": fallback,
-            "source": "fallback",
-            "headers": {}
-        }
+        return {'name': fallback, 'source': 'fallback', 'headers': {}}
 
     return fallback
+
 
 def normalize_product_name(filename):
     """
@@ -699,7 +787,7 @@ def normalize_product_name(filename):
     - alias
     - remoção de vendor
     - remoção de versão
-    - cache    
+    - cache
     Parâmetros:
     - filename (str): Nome do arquivo.
     Retorno:
@@ -737,10 +825,11 @@ def normalize_product_name(filename):
         result = None
     else:
         # Usa até 2 tokens para melhorar robustez sem quebrar compatibilidade
-        result = ".".join(filtered[:2])
+        result = '.'.join(filtered[:2])
 
     _product_cache[filename] = result
     return result
+
 
 def similarity_score(a, b):
     """
@@ -756,6 +845,7 @@ def similarity_score(a, b):
 
     return 1.0 if a == b else 0
 
+
 def purge_similar_installers(dest_dir, target_name):
     """
     Remove versões antigas de um mesmo produto, preservando:
@@ -767,12 +857,12 @@ def purge_similar_installers(dest_dir, target_name):
     - filtra apenas instaladores válidos
     - preserva o target
     - remove apenas excedentes
-    
+
     Parâmetros:
     - dest_dir (str): Diretório destino.
     - target_name (str): Arquivo alvo.
     Retorno:
-    - None    
+    - None
     """
 
     target_base = normalize_product_name(target_name)
@@ -787,9 +877,11 @@ def purge_similar_installers(dest_dir, target_name):
 
         if not os.path.isfile(full):
             continue
-        
+
         # 🔒 Nunca tocar em metadata ou arquivos de controle
-        if f.lower().endswith((".sha256", ".syncado", ".syncdownload")):
+        if f.lower().endswith(
+            ('.sha256', '.syncado', '.syncdownload')
+        ):
             continue
 
         base = normalize_product_name(f)
@@ -803,18 +895,27 @@ def purge_similar_installers(dest_dir, target_name):
 
                 # apenas tipos relevantes (instaladores / imagens grandes)
                 ALLOWED_HASH_DEDUP_EXT = {
-                    ".exe", ".msi", ".zip", ".7z", ".rar",
-                    ".iso", ".img"
+                    '.exe',
+                    '.msi',
+                    '.zip',
+                    '.7z',
+                    '.rar',
+                    '.iso',
+                    '.img',
                 }
 
                 if ext in ALLOWED_HASH_DEDUP_EXT:
-                    size = os.path.getsize(full)                    
+                    size = os.path.getsize(full)
 
                     if size >= MIN_SIZE_BYTES:
-                        target_full = os.path.join(dest_dir, target_name)
+                        target_full = os.path.join(
+                            dest_dir, target_name
+                        )
 
                         if os.path.exists(target_full):
-                            if hash_file(full, "Destino") == hash_file(target_full, "Destino"):
+                            if hash_file(
+                                full, 'Destino'
+                            ) == hash_file(target_full, 'Destino'):
                                 same_product = True
 
             except Exception:
@@ -833,14 +934,20 @@ def purge_similar_installers(dest_dir, target_name):
 
     # 🔒 Só permite purge se o alvo (latest) EXISTE fisicamente
     if not os.path.exists(target_full):
-        show_message(f"Purga abortada: alvo ainda não existe fisicamente ({target_name})", "d")
+        show_message(
+            f'Purga abortada: alvo ainda não existe fisicamente ({target_name})',
+            'd',
+        )
         return
 
     # 🔒 Garante que o target está presente no grupo
     if target_name not in candidates:
-        show_message(f"Purga abortada: alvo não encontrado entre candidatos ({target_name})", "w")
+        show_message(
+            f'Purga abortada: alvo não encontrado entre candidatos ({target_name})',
+            'w',
+        )
         return
-    
+
     # 🔒 mantém target + 1 fallback válido
     keep = [target_name]
 
@@ -858,11 +965,16 @@ def purge_similar_installers(dest_dir, target_name):
         if f not in keep:
             try:
                 os.remove(os.path.join(dest_dir, f))
-                show_message(f"Removido excedente: {f}", "-", cor="yellow")
+                show_message(
+                    f'Removido excedente: {f}', '-', cor='yellow'
+                )
             except Exception as e:
-                show_message(f"Erro ao remover {f}: {e}", "e")
+                show_message(f'Erro ao remover {f}: {e}', 'e')
 
-def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
+
+def resolve_final_filename(
+    url, path, custom_name=None, forced_extension=None
+):
     """
     Mantém todas as regras originais, com melhorias:
     - Extração de versão simplificada e robusta
@@ -885,19 +997,21 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
         remote_info = _resolve_effective_remote_name(url)
 
         if isinstance(remote_info, dict):
-            remote_name = remote_info.get("name")
-            remote_headers = remote_info.get("headers", {})
+            remote_name = remote_info.get('name')
+            remote_headers = remote_info.get('headers', {})
         else:
             remote_name = remote_info
             remote_headers = {}
 
         # 1. URL com versão
-        if remote_name and re.search(r'\d+(?:[.\-]\d+)+', remote_name):
+        if remote_name and re.search(
+            r'\d+(?:[.\-]\d+)+', remote_name
+        ):
             base_source = remote_name
 
         # 2. HEADER
         if not base_source and remote_headers:
-            cd = remote_headers.get("Content-Disposition", "")
+            cd = remote_headers.get('Content-Disposition', '')
             m = re.search(r'filename="?([^"]+)"?', cd)
             if m:
                 base_source = m.group(1)
@@ -906,12 +1020,19 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
         if not base_source:
             final_url, _ = resolve_final_url(url)
             effective = final_url or url
-            base_source = os.path.basename(effective.split("?")[0])
+            base_source = os.path.basename(effective.split('?')[0])
 
     except Exception:
         pass
 
-    def resolve_extension(url, custom_name, forced_extension=None, existing_ext=None, base_source=None, tried=None):
+    def resolve_extension(
+        url,
+        custom_name,
+        forced_extension=None,
+        existing_ext=None,
+        base_source=None,
+        tried=None,
+    ):
         """
         Resolve extensão de forma progressiva com fallback real.
         Nunca falha prematuramente — apenas quando TODAS as fontes falham.
@@ -928,27 +1049,29 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
         # -------------------------------------------------
         candidates = []
 
-        if forced_extension and "forced" not in tried:
-            candidates.append(("forced", forced_extension))
+        if forced_extension and 'forced' not in tried:
+            candidates.append(('forced', forced_extension))
 
-        if existing_ext and "existing" not in tried:
-            candidates.append(("existing", existing_ext))
+        if existing_ext and 'existing' not in tried:
+            candidates.append(('existing', existing_ext))
 
-        if base_source and "base_source" not in tried:
+        if base_source and 'base_source' not in tried:
             m = re.search(r'\.([a-zA-Z]{2,5})$', base_source)
             if m:
-                candidates.append(("base_source", m.group(1)))
+                candidates.append(('base_source', m.group(1)))
 
-        if "url" not in tried:
+        if 'url' not in tried:
             try:
                 final_url, _ = resolve_final_url(url)
                 effective = final_url or url
-                remote_name = os.path.basename(effective.split("?")[0])
+                remote_name = os.path.basename(
+                    effective.split('?')[0]
+                )
 
                 if remote_name:
                     m = re.search(r'\.([a-zA-Z]{2,5})$', remote_name)
                     if m:
-                        candidates.append(("url", m.group(1)))
+                        candidates.append(('url', m.group(1)))
             except Exception:
                 pass
 
@@ -974,7 +1097,7 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
                 forced_extension,
                 existing_ext,
                 base_source,
-                tried
+                tried,
             )
 
             if result:
@@ -983,14 +1106,18 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
         # -------------------------------------------------
         # FALHA REAL (após esgotar tudo)
         # -------------------------------------------------
-        raise Exception(f"Extensão não resolvida para: {custom_name or url}")    
+        raise Exception(
+            f'Extensão não resolvida para: {custom_name or url}'
+        )
 
     # =========================================================
     # 🔒 EXTRAÇÃO DE VERSÃO (SIMPLES E CONFIÁVEL)
     # =========================================================
-    def extract_version(name):        
+    def extract_version(name):
         if not name:
-            raise Exception("Nome não fornecido para extração de versão")
+            raise Exception(
+                'Nome não fornecido para extração de versão'
+            )
 
         base = re.sub(r'\.[a-zA-Z0-9]{2,5}$', '', name)
 
@@ -998,10 +1125,8 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
         base_clean = re.sub(pattern, '', base, flags=re.I)
 
         m = re.search(
-            r'([a-z]?\d+(?:[.\-,]\d+)+[a-z]?)',
-            base_clean,
-            re.I
-        )        
+            r'([a-z]?\d+(?:[.\-,]\d+)+[a-z]?)', base_clean, re.I
+        )
 
         # 🔒 CONTRATO: não pode falhar silenciosamente
         if not m:
@@ -1009,15 +1134,17 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
             m_year = re.search(r'\b(20\d{2})\b', base_clean)
             if m_year:
                 version = m_year.group(1)
-                prefix = base_clean[:m_year.start()]
+                prefix = base_clean[: m_year.start()]
             else:
                 # 🔒 fallback 2: número isolado
                 m_num = re.search(r'\b\d+\b', base_clean)
                 if m_num:
                     version = m_num.group(0)
-                    prefix = base_clean[:m_num.start()]
+                    prefix = base_clean[: m_num.start()]
                 else:
-                    raise Exception(f"Não foi possível extrair versão de: '{name}'")
+                    raise Exception(
+                        f"Não foi possível extrair versão de: '{name}'"
+                    )
 
             # reaproveita lógica existente
             tokens = re.split(r'[^a-zA-Z0-9]+', prefix)
@@ -1028,21 +1155,22 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
             return version, extra
 
         version = re.sub(
-            r'\.{2,}', '.',
+            r'\.{2,}',
+            '.',
             re.sub(
                 r'(?<!\d)[a-z]+|[a-z]+(?=\.)',
                 '',
-                re.sub(r'[^0-9a-zA-Z]+', '.', m.group(1))
-            )
+                re.sub(r'[^0-9a-zA-Z]+', '.', m.group(1)),
+            ),
         ).strip('.')
 
         # 🔒 alinhado com base_clean (onde ocorreu o match)
-        prefix = base_clean[:m.start()]
+        prefix = base_clean[: m.start()]
 
         tokens = re.split(r'[^a-zA-Z0-9]+', prefix)
         tokens = [t for t in tokens if t]
 
-        extra = tokens[-1] if tokens else None        
+        extra = tokens[-1] if tokens else None
 
         return version, extra
 
@@ -1051,13 +1179,11 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
     # =========================================================
     original_custom_name = normalize_canonical_name(custom_name)
 
-    if "{}" in custom_name:
-        
+    if '{}' in custom_name:
         if base_source:
             version, extra = extract_version(base_source)
 
             try:
-
                 if version:
                     # --- TAGS DECLARADAS ---
                     declared_tags = []
@@ -1065,19 +1191,27 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
                     try:
                         raw_url = None
                         try:
-                            with open(path, "r", encoding="utf-8") as f:
+                            with open(
+                                path, 'r', encoding='utf-8'
+                            ) as f:
                                 raw_url = f.readline().strip()
                         except Exception:
                             raw_url = None
 
-                        if raw_url and "|" in raw_url:
-                            left, right = raw_url.split("|", 1)
+                        if raw_url and '|' in raw_url:
+                            left, right = raw_url.split('|', 1)
 
-                            if right.strip().startswith(("http://", "https://")):
-                                parts = [p.strip().lower() for p in left.split(",") if p.strip()]
+                            if right.strip().startswith(
+                                ('http://', 'https://')
+                            ):
+                                parts = [
+                                    p.strip().lower()
+                                    for p in left.split(',')
+                                    if p.strip()
+                                ]
 
                                 for p in parts:
-                                    if not p.startswith("."):
+                                    if not p.startswith('.'):
                                         declared_tags.append(p)
 
                     except Exception:
@@ -1085,21 +1219,29 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
 
                     # --- MONTA BLOCO ---
                     if declared_tags:
-                        version_block = f"{declared_tags[0]}-{version}"
+                        version_block = (
+                            f'{declared_tags[0]}-{version}'
+                        )
                     elif extra:
-                        version_block = f"{extra}-{version}"
+                        version_block = f'{extra}-{version}'
                     else:
                         version_block = version
 
-                    custom_name = custom_name.replace("{}", version_block)
+                    custom_name = custom_name.replace(
+                        '{}', version_block
+                    )
 
             except Exception as e:
-                show_message(f"[DEBUG] erro na substituição {{}}: {e}", "e")
+                show_message(
+                    f'[DEBUG] erro na substituição {{}}: {e}', 'e'
+                )
 
     # =========================================================
     # 🔒 EXTENSÃO
     # =========================================================
-    match_ext = re.search(r'\.([a-z0-9]{2,5})$', custom_name, re.IGNORECASE)
+    match_ext = re.search(
+        r'\.([a-z0-9]{2,5})$', custom_name, re.IGNORECASE
+    )
     existing_ext = match_ext.group(1).lower() if match_ext else None
 
     ext = resolve_extension(
@@ -1107,14 +1249,18 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
         custom_name=custom_name,
         forced_extension=forced_extension,
         existing_ext=existing_ext,
-        base_source=locals().get("base_source")
+        base_source=locals().get('base_source'),
     ).lower()
 
     if not ext:
-        raise Exception(f"Extensão não resolvida para: {custom_name or url}")    
+        raise Exception(
+            f'Extensão não resolvida para: {custom_name or url}'
+        )
 
     if ext not in SyncDonwloadExtensions:
-        raise Exception(f"Extensão não permitida pela regra de negócio: .{ext}")
+        raise Exception(
+            f'Extensão não permitida pela regra de negócio: .{ext}'
+        )
 
     # =========================================================
     # 🔒 BASE NAME
@@ -1123,14 +1269,20 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
         base_name = re.sub(r'\{\}', '', custom_name).strip()
         base_name = re.sub(r'\s+', '-', base_name)
     else:
-        base_name = re.sub(r'\.[a-z0-9]{2,5}$', '', custom_name, flags=re.IGNORECASE)
+        base_name = re.sub(
+            r'\.[a-z0-9]{2,5}$', '', custom_name, flags=re.IGNORECASE
+        )
 
         if not base_name:
             base_name = custom_name.strip()
 
         if not base_name:
-            base_name = re.sub(r'\.[a-z0-9]{2,5}$', '', custom_name.lower())
-            base_name = re.sub(r'[^a-z0-9]+', '.', base_name).strip('.')
+            base_name = re.sub(
+                r'\.[a-z0-9]{2,5}$', '', custom_name.lower()
+            )
+            base_name = re.sub(r'[^a-z0-9]+', '.', base_name).strip(
+                '.'
+            )
 
     # =========================================================
     # 🔒 DEDUP (INALTERADO)
@@ -1140,7 +1292,7 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
 
         version_map = {}
         for i, v in enumerate(version_patterns):
-            placeholder = f"__VER{i}__"
+            placeholder = f'__VER{i}__'
             version_map[placeholder] = v
             base_name = base_name.replace(v, placeholder)
 
@@ -1169,7 +1321,7 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
             cleaned_tokens.append(t)
 
         if cleaned_tokens:
-            separator = "." if "." in base_name else "-"
+            separator = '.' if '.' in base_name else '-'
             base_name = separator.join(cleaned_tokens)
 
         for placeholder, value in version_map.items():
@@ -1182,9 +1334,10 @@ def resolve_final_filename(url, path, custom_name=None, forced_extension=None):
     # 🔒 FINAL
     # =========================================================
     if ext:
-        return f"{base_name}.{ext}"   
+        return f'{base_name}.{ext}'
 
     return base_name
+
 
 def parse_syncdownload(file_path):
     """
@@ -1193,7 +1346,7 @@ def parse_syncdownload(file_path):
     - file_path (str): Caminho do arquivo.
     Retorno:
     - tuple: (url, expected_hash, custom_name)
-    """    
+    """
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             raw_lines = [l.rstrip('\n') for l in f.readlines()]
@@ -1208,39 +1361,57 @@ def parse_syncdownload(file_path):
         try:
             if has_parser_expression(url):
                 resolved = resolve_parser_expression(
-                    url,
-                    context_name=os.path.basename(file_path)
+                    url, context_name=os.path.basename(file_path)
                 )
 
                 if not isinstance(resolved, str):
-                    raise Exception("Parser DSL não retornou URL válida")
+                    raise Exception(
+                        'Parser DSL não retornou URL válida'
+                    )
 
                 url = resolved
 
         except Exception as e:
-            show_message(f"Erro ao resolver parser DSL: {e}", "e")
+            show_message(f'Erro ao resolver parser DSL: {e}', 'e')
             return None, None, None
 
         # 🔒 GARANTIA: URL final válida
         if not url or not isinstance(url, str):
-            show_message(f"URL inválida no .syncdownload: {file_path}", "e")
+            show_message(
+                f'URL inválida no .syncdownload: {file_path}', 'e'
+            )
             return None, None, None
 
-        if "${" in url:
-            show_message(f"URL inválida após parser: {url}", "e")
+        if '${' in url:
+            show_message(f'URL inválida após parser: {url}', 'e')
             return None, None, None
 
     except Exception as e:
-        show_message(f"Erro ao ler .syncdownload {file_path}: {e}", "e")
+        show_message(
+            f'Erro ao ler .syncdownload {file_path}: {e}', 'e'
+        )
         return None, None, None
 
-    expected_hash = raw_lines[1].strip() if len(raw_lines) > 1 and raw_lines[1].strip() else None
-    custom_name = raw_lines[2].strip() if len(raw_lines) > 2 and raw_lines[2].strip() else None
+    expected_hash = (
+        raw_lines[1].strip()
+        if len(raw_lines) > 1 and raw_lines[1].strip()
+        else None
+    )
+    custom_name = (
+        raw_lines[2].strip()
+        if len(raw_lines) > 2 and raw_lines[2].strip()
+        else None
+    )
 
     # 🔒 linha 4 — hash remoto (NÃO persiste, uso obrigatório em memória)
-    remote_hash_url = raw_lines[3].strip() if len(raw_lines) > 3 and raw_lines[3].strip() else None
+    remote_hash_url = (
+        raw_lines[3].strip()
+        if len(raw_lines) > 3 and raw_lines[3].strip()
+        else None
+    )
 
-    return url, expected_hash, custom_name, remote_hash_url       
+    return url, expected_hash, custom_name, remote_hash_url
+
 
 def parse_syncdownload_scripts(file_path):
     """
@@ -1251,32 +1422,31 @@ def parse_syncdownload_scripts(file_path):
     blocks = []
 
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
         current = None
 
         for line in lines[4:]:  # 🔒 começa após linha 4
-            line = line.rstrip("\n")
+            line = line.rstrip('\n')
 
-            m = re.match(r'^>>>\s*([a-zA-Z0-9]+)(?:\s*,\s*([a-zA-Z0-9]+))?', line)
+            m = re.match(
+                r'^>>>\s*([a-zA-Z0-9]+)(?:\s*,\s*([a-zA-Z0-9]+))?',
+                line,
+            )
 
             if m:
                 if current:
                     blocks.append(current)
 
                 ext = m.group(1)
-                phase = (m.group(2) or "start").lower()
+                phase = (m.group(2) or 'start').lower()
 
-                current = {
-                    "ext": ext,
-                    "phase": phase,
-                    "content": []
-                }
+                current = {'ext': ext, 'phase': phase, 'content': []}
                 continue
 
             if current:
-                current["content"].append(line)
+                current['content'].append(line)
 
         if current:
             blocks.append(current)
@@ -1285,6 +1455,7 @@ def parse_syncdownload_scripts(file_path):
         return []
 
     return blocks
+
 
 def manage_sync_metadata(final_dest_path, url, expected_hash):
     """
@@ -1301,31 +1472,31 @@ def manage_sync_metadata(final_dest_path, url, expected_hash):
     - url (str): URL do recurso.
     - expected_hash (str|None): Hash esperado.
     Retorno:
-    - bool: True se precisa baixar.    
+    - bool: True se precisa baixar.
     """
 
-    sha_file = final_dest_path + ".sha256"
-    sync_file = final_dest_path + ".syncado"
+    sha_file = final_dest_path + '.sha256'
+    sync_file = final_dest_path + '.syncado'
 
     # =========================================================
     # 1. ARQUIVO NÃO EXISTE → DOWNLOAD
     # =========================================================
     if not os.path.exists(final_dest_path):
-        show_message("Arquivo não existe → download necessário", "d")
+        show_message('Arquivo não existe → download necessário', 'd')
         return True
 
     # =========================================================
     # 2. SEM .syncado → NÃO SABE QUAL VERSÃO → DOWNLOAD
     # =========================================================
     if not os.path.exists(sync_file):
-        show_message("Sem .syncado → download necessário", "d")
+        show_message('Sem .syncado → download necessário', 'd')
         return True
 
     try:
         # =====================================================
         # 3. COMPARAÇÃO DE NOME (VERSÃO)
         # =====================================================
-        with open(sync_file, "r", encoding="utf-8") as f:
+        with open(sync_file, 'r', encoding='utf-8') as f:
             stored_name = f.read().strip()
 
         current_info = _resolve_effective_remote_name(url)
@@ -1333,95 +1504,104 @@ def manage_sync_metadata(final_dest_path, url, expected_hash):
         current_name = None
 
         if isinstance(current_info, dict):
-            current_name = current_info.get("name")
+            current_name = current_info.get('name')
         elif isinstance(current_info, str):
             current_name = current_info
 
         if not current_name:
-            show_message("Não foi possível resolver nome atual → download", "w")
+            show_message(
+                'Não foi possível resolver nome atual → download', 'w'
+            )
             return True
 
         if stored_name.lower() != current_name.lower():
             show_message(
-                f"Novo release detectado: {stored_name} -> {current_name}",
-                "i"
+                f'Novo release detectado: {stored_name} -> {current_name}',
+                'i',
             )
             return True
-        
-        show_message(f"Mesmo release detectado: {current_name}", "d")
+
+        show_message(f'Mesmo release detectado: {current_name}', 'd')
 
         # =====================================================
         # 4. VALIDAÇÃO DE HASH EXTERNO (linha 2 do .syncdownload)
         # =====================================================
         if expected_hash:
-            current_hash = hash_file(final_dest_path, "Destino")
+            current_hash = hash_file(final_dest_path, 'Destino')
 
             if current_hash == expected_hash.lower():
                 show_message(
-                    f"Hash externo válido (sem download): {os.path.basename(final_dest_path)}",
-                    "k"
+                    f'Hash externo válido (sem download): {os.path.basename(final_dest_path)}',
+                    'k',
                 )
                 return False
 
             show_message(
-                f"Hash externo divergente → download necessário",
-                "w"
+                f'Hash externo divergente → download necessário', 'w'
             )
-            return True        
+            return True
 
         # =====================================================
         # 5. VALIDAÇÃO DE HASH LOCAL (.sha256)
         # =====================================================
-        if not os.path.exists(sha_file):            
-            show_message("Sem .sha256, somente .syncado presente → reprocessamento obrigatório", "d")               
+        if not os.path.exists(sha_file):
+            show_message(
+                'Sem .sha256, somente .syncado presente → reprocessamento obrigatório',
+                'd',
+            )
             return True
 
-        with open(sha_file, "r", encoding="utf-8") as f:
+        with open(sha_file, 'r', encoding='utf-8') as f:
             line = f.readline().strip()
             saved_hash = line.split()[0] if line else None
 
         if not saved_hash:
-            show_message("Hash inválido no .sha256 → download", "w")
+            show_message('Hash inválido no .sha256 → download', 'w')
             return True
 
-        current_hash = hash_file(final_dest_path, "Destino")
+        current_hash = hash_file(final_dest_path, 'Destino')
 
         if current_hash == saved_hash:
             show_message(
-                f"Arquivo íntegro (sem download): {os.path.basename(final_dest_path)}",
-                "k"
+                f'Arquivo íntegro (sem download): {os.path.basename(final_dest_path)}',
+                'k',
             )
             return False
 
-        show_message(f"Hash atual {current_hash} != {saved_hash}", "w")
+        show_message(
+            f'Hash atual {current_hash} != {saved_hash}', 'w'
+        )
         return True
 
     except Exception as e:
-        show_message(f"Erro na validação: {e}", "w")
+        show_message(f'Erro na validação: {e}', 'w')
         return True
-    
+
+
 def generate_sync_metadata(final_dest_path, url):
     try:
-        show_message(f"Gerando arquivos auxiliares: {os.path.basename(final_dest_path)}", "d")
+        show_message(
+            f'Gerando arquivos auxiliares: {os.path.basename(final_dest_path)}',
+            'd',
+        )
 
         ext = os.path.splitext(final_dest_path)[1].lower()
 
         # =========================================================
         # 1. SHA256 → SOMENTE PARA IMAGENS
         # =========================================================
-        if ext in (".iso", ".img"):
+        if ext in ('.iso', '.img'):
             sha256_hash = hashlib.sha256()
 
             total_size = os.path.getsize(final_dest_path)
 
-            with open(final_dest_path, "rb") as f:
-                with create_progress("bold yellow") as progress:
-
+            with open(final_dest_path, 'rb') as f:
+                with create_progress('bold yellow') as progress:
                     task = progress.add_task(
-                        "",
+                        '',
                         total=total_size,
                         name=os.path.basename(final_dest_path),
-                         op=get_op_icon("download")
+                        op=get_op_icon('download'),
                     )
 
                     while True:
@@ -1433,10 +1613,12 @@ def generate_sync_metadata(final_dest_path, url):
                         progress.update(task, advance=len(chunk))
 
             filename_only = os.path.basename(final_dest_path)
-            sha_line = f"{sha256_hash.hexdigest()}  {filename_only}"
+            sha_line = f'{sha256_hash.hexdigest()}  {filename_only}'
 
-            with open(final_dest_path + ".sha256", "w", encoding="utf-8") as f:
-                f.write(sha_line + "\n")
+            with open(
+                final_dest_path + '.sha256', 'w', encoding='utf-8'
+            ) as f:
+                f.write(sha_line + '\n')
 
         # =========================================================
         # 2. .syncado → SEMPRE
@@ -1446,16 +1628,19 @@ def generate_sync_metadata(final_dest_path, url):
         original_name = None
 
         if isinstance(original_info, dict):
-            original_name = original_info.get("name")
+            original_name = original_info.get('name')
         elif isinstance(original_info, str):
             original_name = original_info
 
         if original_name:
-            with open(final_dest_path + ".syncado", "w", encoding="utf-8") as f:
+            with open(
+                final_dest_path + '.syncado', 'w', encoding='utf-8'
+            ) as f:
                 f.write(str(original_name))
 
     except Exception as e:
-        show_message(f"Erro ao gerar arquivos auxiliares: {e}", "w")
+        show_message(f'Erro ao gerar arquivos auxiliares: {e}', 'w')
+
 
 def normalize_tokens(s):
     """
@@ -1465,7 +1650,8 @@ def normalize_tokens(s):
     Retorno:
     - list[str]: Lista de tokens.
     """
-    return [t for t in re.split(r'[^a-z0-9]+', s.lower()) if t] 
+    return [t for t in re.split(r'[^a-z0-9]+', s.lower()) if t]
+
 
 def normalize_canonical_name(name):
     """
@@ -1477,13 +1663,14 @@ def normalize_canonical_name(name):
     if not name:
         return None
 
-    name = name.replace("{}", "").strip()
+    name = name.replace('{}', '').strip()
 
     # trim apenas nas bordas (não destrói estrutura interna)
     name = re.sub(r'^[^a-zA-Z0-9]+', '', name)
     name = re.sub(r'[^a-zA-Z0-9]+$', '', name)
 
     return name or None
+
 
 def has_parser_expression(value):
     """has_parser_expression(value)
@@ -1492,10 +1679,13 @@ def has_parser_expression(value):
     - value (str): Valor a verificar.
     Retorno:
     - bool: True se contém expressão.
-    """    
+    """
     if not value:
         return False
-    return bool(re.search(r'\$\{\s*["\']https?://[^"\']+["\']\s*\}', value))
+    return bool(
+        re.search(r'\$\{\s*["\']https?://[^"\']+["\']\s*\}', value)
+    )
+
 
 def extract_parser_url(value):
     """
@@ -1519,13 +1709,14 @@ def resolve_final_url(url, timeout=10):
     - timeout (int): Timeout.
     Retorno:
     - tuple: (url_final, headers)
-    """    
+    """
     try:
-        req = urllib.request.Request(url, method="HEAD")
+        req = urllib.request.Request(url, method='HEAD')
         with http_open(req, timeout=timeout) as response:
             return response.geturl(), response.headers
     except Exception:
         return None, {}
+
 
 def is_binary_content(headers):
     """
@@ -1534,9 +1725,10 @@ def is_binary_content(headers):
     - headers (dict): Headers HTTP.
     Retorno:
     - bool: True se binário.
-    """    
-    ct = headers.get("Content-Type", "").lower()
-    return "text/html" not in ct 
+    """
+    ct = headers.get('Content-Type', '').lower()
+    return 'text/html' not in ct
+
 
 def fetch_remote_hash(remote_hash_url):
     """
@@ -1549,30 +1741,33 @@ def fetch_remote_hash(remote_hash_url):
     try:
         req = urllib.request.Request(remote_hash_url)
         with http_open(req) as response:
-            content = response.read().decode(errors="ignore")
+            content = response.read().decode(errors='ignore')
 
         # 🔒 extrai primeiro hash válido
-        match = re.search(r'\b([a-fA-F0-9]{32}|[a-fA-F0-9]{64})\b', content)
+        match = re.search(
+            r'\b([a-fA-F0-9]{32}|[a-fA-F0-9]{64})\b', content
+        )
 
         if not match:
-            raise Exception("Hash remoto não extraível")
+            raise Exception('Hash remoto não extraível')
 
         return match.group(1).lower()
 
     except Exception as e:
-        raise Exception(f"Falha ao obter hash remoto: {e}")
+        raise Exception(f'Falha ao obter hash remoto: {e}')
+
 
 def execute_sync_script(block, sync_path, downloaded_file=None):
     """
     Executa script embutido garantindo contrato de parâmetros.
-    """        
+    """
     if not sync_path or not os.path.exists(sync_path):
-        raise RuntimeError("Contrato inválido: sync_path inexistente")
+        raise RuntimeError('Contrato inválido: sync_path inexistente')
 
     try:
-        code = block.get("content")
-        interpreter = block.get("ext", "python").lower()
-        phase = block.get("phase", "start")
+        code = block.get('content')
+        interpreter = block.get('ext', 'python').lower()
+        phase = block.get('phase', 'start')
 
         if not code:
             return
@@ -1580,14 +1775,20 @@ def execute_sync_script(block, sync_path, downloaded_file=None):
         # =========================================================
         # 🔒 CRIA SCRIPT TEMPORÁRIO
         # =========================================================
-        suffix = f".{interpreter}"
-        if interpreter in ("py", "python"):
-            suffix = ".py"
-        elif interpreter == "ps1":
-            suffix = ".ps1"
+        suffix = f'.{interpreter}'
+        if interpreter in ('py', 'python'):
+            suffix = '.py'
+        elif interpreter == 'ps1':
+            suffix = '.ps1'
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, mode="w", encoding="utf-8", newline="\n") as tmp:
-            tmp.write("\n".join(code))
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=suffix,
+            mode='w',
+            encoding='utf-8',
+            newline='\n',
+        ) as tmp:
+            tmp.write('\n'.join(code))
             tmp_path = tmp.name
 
         try:
@@ -1598,22 +1799,35 @@ def execute_sync_script(block, sync_path, downloaded_file=None):
         # =========================================================
         # 🔒 MONTA ARGUMENTOS (CONTRATO OBRIGATÓRIO)
         # =========================================================
-        if interpreter in ("py", "python"):
+        if interpreter in ('py', 'python'):
             args = [sys.executable, tmp_path]
-        elif interpreter == "ps1" and os.name == "nt":
-            args = ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", tmp_path]
-        elif os.name == "nt":
-            args = ["cmd.exe", "/c", tmp_path]
+        elif interpreter == 'ps1' and os.name == 'nt':
+            args = [
+                'powershell.exe',
+                '-ExecutionPolicy',
+                'Bypass',
+                '-File',
+                tmp_path,
+            ]
+        elif os.name == 'nt':
+            args = ['cmd.exe', '/c', tmp_path]
         else:
-            args = ["bash", tmp_path]
+            args = ['bash', tmp_path]
 
         # 🔒 ARG1: path do .syncdownload (OBRIGATÓRIO)
         args.append(sync_path)
-        
-        args.append(os.path.basename(downloaded_file) if downloaded_file else "")
-        args.append(downloaded_file if downloaded_file else "")
 
-        show_message(f"[SCRIPT:{phase}] Exec → {os.path.basename(sync_path)}", "i")
+        args.append(
+            os.path.basename(downloaded_file)
+            if downloaded_file
+            else ''
+        )
+        args.append(downloaded_file if downloaded_file else '')
+
+        show_message(
+            f'[SCRIPT:{phase}] Exec → {os.path.basename(sync_path)}',
+            'i',
+        )
 
         # =========================================================
         # 🔒 EXECUÇÃO ISOLADA
@@ -1623,17 +1837,19 @@ def execute_sync_script(block, sync_path, downloaded_file=None):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            cwd=os.path.dirname(sync_path)
+            cwd=os.path.dirname(sync_path),
         )
 
         if result.stdout:
-            show_message(result.stdout.strip(), "d")
+            show_message(result.stdout.strip(), 'd')
 
         if result.stderr:
-            show_message(result.stderr.strip(), "w")
+            show_message(result.stderr.strip(), 'w')
 
         if result.returncode != 0:
-            show_message(f"Script retornou código {result.returncode}", "w")
+            show_message(
+                f'Script retornou código {result.returncode}', 'w'
+            )
 
         # 🔒 cleanup obrigatório
         try:
@@ -1647,7 +1863,8 @@ def execute_sync_script(block, sync_path, downloaded_file=None):
                 os.remove(tmp_path)
         except Exception:
             pass
-        show_message(f"Erro ao executar script: {e}", "e")
+        show_message(f'Erro ao executar script: {e}', 'e')
+
 
 def is_same_product(a, b):
     """
@@ -1657,39 +1874,41 @@ def is_same_product(a, b):
     - b (str): Nome B.
     Retorno:
     - bool: True se equivalentes.
-    """    
+    """
     if not a or not b:
         return False
 
     # 🔒 Se ambos não possuem separador ".", tratar como canônico rígido
-    if "." not in a and "." not in b:
+    if '.' not in a and '.' not in b:
         return a.lower() == b.lower()
 
-    ta = set(a.split("."))
-    tb = set(b.split("."))
+    ta = set(a.split('.'))
+    tb = set(b.split('.'))
 
     intersect = ta & tb
 
-    return len(intersect) >= 1  
+    return len(intersect) >= 1
 
-def has_resolvable_url(value):    
+
+def has_resolvable_url(value):
     """
     Descrição: Detecta URL direta OU indireta (parser DSL)
     Parâmetros:
     - value (str): Valor contendo URL.
     Retorno:
     - tuple: (tipo, url)
-    """    
+    """
     if not value:
         return False
 
     if has_parser_expression(value):
         return True
 
-    return bool(re.search(r'https?://', value)) 
+    return bool(re.search(r'https?://', value))
+
 
 def resolve_url_source(value):
-    """    
+    """
     Descrição: Identifica tipo e origem da URL, direta ou via parser DSL.
     Parâmetros:
     - value (str): Valor contendo URL.
@@ -1701,13 +1920,14 @@ def resolve_url_source(value):
         return None, None
 
     if has_parser_expression(value):
-        return "parser", extract_parser_url(value)
+        return 'parser', extract_parser_url(value)
 
     m = re.search(r'(https?://[^\s]+)', value)
     if m:
-        return "direct", m.group(1)
+        return 'direct', m.group(1)
 
-    return None, None   
+    return None, None
+
 
 def _parser_cache_get(url):
     """_parser_cache_get(url)
@@ -1716,7 +1936,7 @@ def _parser_cache_get(url):
     - url (str): URL base.
     Retorno:
     - any: Dados em cache ou None.
-    """    
+    """
     entry = __PARSER_CACHE.get(url)
     if not entry:
         return None
@@ -1726,6 +1946,7 @@ def _parser_cache_get(url):
         return None
 
     return data
+
 
 def _parser_cache_set(url, data):
     """_parser_cache_set(url, data)
@@ -1738,37 +1959,43 @@ def _parser_cache_set(url, data):
     """
     __PARSER_CACHE[url] = (time.time(), data)
 
+
 def fetch_and_parse(url):
     """
     Descrição: Fetch + parse automático (JSON/YAML fallback JSON only)
     Parâmetros:
     - url (str): URL de origem.
     Retorno:
-    - dict: Dados parseados    
+    - dict: Dados parseados
     """
 
     cached = _parser_cache_get(url)
     if cached is not None:
-        return cached    
+        return cached
 
-    req = urllib.request.Request(url, headers={"User-Agent": "sync-engine"})
+    req = urllib.request.Request(
+        url, headers={'User-Agent': 'sync-engine'}
+    )
 
     with http_open(req) as response:
         raw = response.read()
 
-        content_type = response.headers.get("Content-Type", "").lower()
+        content_type = response.headers.get(
+            'Content-Type', ''
+        ).lower()
 
-        if "json" in content_type:
+        if 'json' in content_type:
             data = json.loads(raw.decode())
         else:
             # fallback seguro → tenta JSON
             try:
                 data = json.loads(raw.decode())
             except Exception:
-                raise Exception("Parser DSL: formato não suportado")
+                raise Exception('Parser DSL: formato não suportado')
 
     _parser_cache_set(url, data)
     return data
+
 
 def resolve_data_path(obj, path, context_name=None):
     """
@@ -1786,7 +2013,7 @@ def resolve_data_path(obj, path, context_name=None):
         m = re.match(r'([a-zA-Z0-9_\-]+)(\[(.*?)\])?', token)
 
         if not m:
-            raise Exception(f"Parser DSL inválido: {token}")
+            raise Exception(f'Parser DSL inválido: {token}')
 
         key = m.group(1)
         selector = m.group(3)  # conteúdo dentro []
@@ -1816,7 +2043,7 @@ def resolve_data_path(obj, path, context_name=None):
 
         else:
             raise Exception(
-                f"Parser DSL: estrutura inválida (esperado dict/list) | origem: {context_name}"
+                f'Parser DSL: estrutura inválida (esperado dict/list) | origem: {context_name}'
             )
 
         # --- sem seletor ---
@@ -1826,13 +2053,17 @@ def resolve_data_path(obj, path, context_name=None):
         # --- índice numérico ---
         if re.match(r'^\d+$', selector):
             if not isinstance(current, list):
-                raise Exception("Parser DSL: índice aplicado em estrutura não-lista")
+                raise Exception(
+                    'Parser DSL: índice aplicado em estrutura não-lista'
+                )
 
             current = current[int(selector)]
             continue
 
         # --- filtro estilo [@campo="valor"] ---
-        m_filter = re.match(r'@([a-zA-Z0-9_\-]+)\s*=\s*["\']([^"\']+)["\']', selector)
+        m_filter = re.match(
+            r'@([a-zA-Z0-9_\-]+)\s*=\s*["\']([^"\']+)["\']', selector
+        )
 
         if m_filter:
             attr = m_filter.group(1)
@@ -1843,7 +2074,9 @@ def resolve_data_path(obj, path, context_name=None):
                 current = [current]
 
             if not isinstance(current, list):
-                raise Exception("Parser DSL: filtro aplicado em estrutura não-lista")
+                raise Exception(
+                    'Parser DSL: filtro aplicado em estrutura não-lista'
+                )
 
             match_item = None
 
@@ -1857,14 +2090,17 @@ def resolve_data_path(obj, path, context_name=None):
                         break
 
             if match_item is None:
-                raise Exception(f"Parser DSL: nenhum match para {attr}={value}")
+                raise Exception(
+                    f'Parser DSL: nenhum match para {attr}={value}'
+                )
 
             current = match_item
             continue
 
-        raise Exception(f"Parser DSL: seletor inválido [{selector}]")
+        raise Exception(f'Parser DSL: seletor inválido [{selector}]')
 
     return current
+
 
 def resolve_parser_expression(expr, context_name=None):
     """
@@ -1873,13 +2109,13 @@ def resolve_parser_expression(expr, context_name=None):
     Parâmetros:
     - expr (str): Expressão DSL.
     Retorno:
-    - any: Resultado resolvido.    
+    - any: Resultado resolvido.
     """
 
     url = extract_parser_url(expr)
 
     if not url:
-        raise Exception("Parser DSL: URL inválida")
+        raise Exception('Parser DSL: URL inválida')
 
     # extrai path após }
     path_match = re.search(r'\}\.(.+)$', expr)
@@ -1892,6 +2128,7 @@ def resolve_parser_expression(expr, context_name=None):
     data = fetch_and_parse(url)
 
     return resolve_data_path(data, path, context_name=context_name)
+
 
 def resolve_syncdownload_cached(sync_path):
     """
@@ -1906,19 +2143,21 @@ def resolve_syncdownload_cached(sync_path):
     Parâmetros:
     - sync_path (str): Caminho do arquivo.
     Retorno:
-    - dict|None: Dados resolvidos.    
+    - dict|None: Dados resolvidos.
     """
 
     cache_entry = sync_resolve_cache.get(sync_path)
 
     if cache_entry:
-        cached_mtime = cache_entry.get("_mtime")
+        cached_mtime = cache_entry.get('_mtime')
         current_mtime = os.path.getmtime(sync_path)
 
         if cached_mtime == current_mtime:
             return cache_entry
 
-    url, expected_hash, custom_filename, remote_hash_url = parse_syncdownload(sync_path)
+    url, expected_hash, custom_filename, remote_hash_url = (
+        parse_syncdownload(sync_path)
+    )
 
     if not url:
         return None
@@ -1926,12 +2165,14 @@ def resolve_syncdownload_cached(sync_path):
     spec = None
 
     # --- split spec | url ---
-    if "|" in url:
+    if '|' in url:
         try:
-            left, right = url.split("|", 1)
+            left, right = url.split('|', 1)
             right = right.strip()
 
-            if right.startswith("http://") or right.startswith("https://"):
+            if right.startswith('http://') or right.startswith(
+                'https://'
+            ):
                 spec = left.strip()
                 url = right
         except Exception:
@@ -1940,9 +2181,13 @@ def resolve_syncdownload_cached(sync_path):
     # --- GitHub ---
     forced_extension = None
 
-    if spec and "github.com" in url.lower() and not __IGNORAR_GITHUB:
-        try:                    
-            parts = [p.strip().lower() for p in spec.split(",") if p.strip()]
+    if spec and 'github.com' in url.lower() and not __IGNORAR_GITHUB:
+        try:
+            parts = [
+                p.strip().lower()
+                for p in spec.split(',')
+                if p.strip()
+            ]
 
             ext = None
             arch = None
@@ -1950,35 +2195,37 @@ def resolve_syncdownload_cached(sync_path):
             exclude_filters = []
 
             for p in parts:
-                if p.startswith("."):
+                if p.startswith('.'):
                     ext = p[1:]
                     forced_extension = ext
-                elif p in ("x86", "x64", "arm64", "amd64"):
+                elif p in ('x86', 'x64', 'arm64', 'amd64'):
                     arch = p
-                elif p.startswith("!"):
+                elif p.startswith('!'):
                     exclude_filters.append(p[1:])
                 else:
                     include_filters.append(p)
 
             if ext:
-                api_url = url.rstrip('/').replace(
-                    "github.com",
-                    "api.github.com/repos"
-                ) + "/releases/latest"
+                api_url = (
+                    url.rstrip('/').replace(
+                        'github.com', 'api.github.com/repos'
+                    )
+                    + '/releases/latest'
+                )
 
                 with http_open(api_url) as response:
                     data = json.loads(response.read().decode())
 
-                assets = data.get("assets", [])
+                assets = data.get('assets', [])
 
                 candidates = []
 
                 for asset in assets:
-                    name = asset.get("name", "")
+                    name = asset.get('name', '')
                     tokens = normalize_tokens(name)
                     clean = name.lower()
 
-                    if not clean.endswith(f".{ext}"):
+                    if not clean.endswith(f'.{ext}'):
                         continue
 
                     ok = True
@@ -2001,8 +2248,10 @@ def resolve_syncdownload_cached(sync_path):
                         candidates.append(asset)
 
                 if candidates:
-                    selected = max(candidates, key=lambda a: a.get("size", 0))
-                    url = selected.get("browser_download_url")
+                    selected = max(
+                        candidates, key=lambda a: a.get('size', 0)
+                    )
+                    url = selected.get('browser_download_url')
 
         except Exception:
             pass
@@ -2015,21 +2264,22 @@ def resolve_syncdownload_cached(sync_path):
         url=effective_url,
         path=sync_path,
         custom_name=custom_filename,
-        forced_extension=forced_extension
+        forced_extension=forced_extension,
     )
 
     result = {
-        "url": url,
-        "filename": filename,
-        "expected_hash": expected_hash,
-        "remote_hash_url": remote_hash_url,
-        "forced_extension": forced_extension,
-        "custom_filename": custom_filename
+        'url': url,
+        'filename': filename,
+        'expected_hash': expected_hash,
+        'remote_hash_url': remote_hash_url,
+        'forced_extension': forced_extension,
+        'custom_filename': custom_filename,
     }
 
-    result["_mtime"] = os.path.getmtime(sync_path)
+    result['_mtime'] = os.path.getmtime(sync_path)
     sync_resolve_cache[sync_path] = result
-    return result    
+    return result
+
 
 def resolve_download_context(sync_path):
     """
@@ -2038,26 +2288,27 @@ def resolve_download_context(sync_path):
     - sync_path (str): Caminho do .syncdownload.
     Retorno:
     - dict|None: Contexto com URL final e headers.
-    """    
+    """
     resolved = resolve_syncdownload_cached(sync_path)
 
     if not resolved:
         return None
 
     cached = sync_resolve_cache.get(sync_path)
-    if cached and cached.get("final_url"):
-        final_url = cached["final_url"]
-        headers = cached.get("headers", {})
+    if cached and cached.get('final_url'):
+        final_url = cached['final_url']
+        headers = cached.get('headers', {})
     else:
-        final_url, headers = resolve_final_url(resolved["url"])
-        resolved["final_url"] = final_url
-        resolved["headers"] = headers
+        final_url, headers = resolve_final_url(resolved['url'])
+        resolved['final_url'] = final_url
+        resolved['headers'] = headers
 
     return {
         **resolved,
-        "final_url": final_url,
-        "headers": headers,
-    }    
+        'final_url': final_url,
+        'headers': headers,
+    }
+
 
 def destination_cleanup(root, dry_run=False):
     """
@@ -2072,71 +2323,96 @@ def destination_cleanup(root, dry_run=False):
     # --- CACHE LOCAL DE PROTEÇÃO POR DIRETÓRIO (.syncdownload) ---
     local_sync_files = []
     try:
-        origin_dir_equiv = os.path.join(ORIGIN_PATH, os.path.relpath(root, destination_path))
+        origin_dir_equiv = os.path.join(
+            ORIGIN_PATH, os.path.relpath(root, destination_path)
+        )
         if os.path.exists(origin_dir_equiv):
             for f in os.listdir(origin_dir_equiv):
-                if f.lower().endswith(".syncdownload"):
-                    local_sync_files.append(os.path.join(origin_dir_equiv, f))
+                if f.lower().endswith('.syncdownload'):
+                    local_sync_files.append(
+                        os.path.join(origin_dir_equiv, f)
+                    )
     except Exception:
         local_sync_files = []
 
     has_local_sync = len(local_sync_files) > 0
 
-    for item in os.listdir(root):        
+    for item in os.listdir(root):
         dest_full_path = os.path.join(root, item)
         rel_path = os.path.relpath(dest_full_path, destination_path)
-        origin_equivalent = os.path.join(ORIGIN_PATH, rel_path)        
+        origin_equivalent = os.path.join(ORIGIN_PATH, rel_path)
 
         # --- IGNORA PASTAS RAIZ apps/ e Drivers/ NO DESTINO ---
         # Se estiver na raiz do destino e for uma dessas pastas, ignora completamente
-        if root == destination_path and item in ("apps", "Drivers"):
-            show_message(f"Remoção ignorada: {item}", "i")
+        if root == destination_path and item in ('apps', 'Drivers'):
+            show_message(f'Remoção ignorada: {item}', 'i')
             continue
-        
+
         # protege arquivos auxiliares de sync vinculados a arquivo existente
-        if dest_full_path.lower().endswith((".sha256", ".syncado")):
-            origin_equivalent_sync = origin_equivalent + ".syncdownload"
+        if dest_full_path.lower().endswith(('.sha256', '.syncado')):
+            origin_equivalent_sync = (
+                origin_equivalent + '.syncdownload'
+            )
 
             # 🔒 1. Se existir .syncdownload correspondente na origem → protege
             if os.path.exists(origin_equivalent_sync):
                 try:
-                    resolved = resolve_syncdownload_cached(origin_equivalent_sync)
+                    resolved = resolve_syncdownload_cached(
+                        origin_equivalent_sync
+                    )
 
                     if resolved:
-                        expected_name = resolved.get("filename")
+                        expected_name = resolved.get('filename')
                         base_dir = os.path.dirname(dest_full_path)
-                        expected_full = os.path.join(base_dir, expected_name)
+                        expected_full = os.path.join(
+                            base_dir, expected_name
+                        )
 
                         if os.path.exists(expected_full):
-                            show_message(f"Remoção protegida (.syncdownload válido): {item}", "D")
+                            show_message(
+                                f'Remoção protegida (.syncdownload válido): {item}',
+                                'D',
+                            )
                             continue
                 except Exception:
                     pass
 
             # 🔒 2. Se o arquivo base existir localmente → SEMPRE protege
-            base_file = re.sub(r'\.(sha256|syncado)$', '', dest_full_path, flags=re.IGNORECASE)
+            base_file = re.sub(
+                r'\.(sha256|syncado)$',
+                '',
+                dest_full_path,
+                flags=re.IGNORECASE,
+            )
 
             if os.path.exists(base_file):
-                show_message(f"Remoção protegida (arquivo base existente): {item}", "D")
+                show_message(
+                    f'Remoção protegida (arquivo base existente): {item}',
+                    'D',
+                )
                 continue
 
             # 🔒 3. REMOÇÃO REAL DE METADATA ÓRFÃ (ANTES NÃO OCORRIA)
-            show_message(f"Metadata órfã removida: {item}", "d")
+            show_message(f'Metadata órfã removida: {item}', 'd')
 
             if not dry_run:
                 try:
                     os.remove(dest_full_path)
                 except Exception as e:
-                    show_message(f"Falha ao remover metadata órfã: {e}", "e")
+                    show_message(
+                        f'Falha ao remover metadata órfã: {e}', 'e'
+                    )
 
-            continue        
+            continue
 
         if re.search(IGNORED_PATHS, dest_full_path, re.IGNORECASE):
-            show_message(f"Remoção ignorada [regex]: {dest_full_path}", "W")
+            show_message(
+                f'Remoção ignorada [regex]: {dest_full_path}', 'W'
+            )
             continue
 
         # --- TRATAMENTO PARA ARQUIVOS GERADOS POR .syncdownload ---
-        origin_equivalent_sync = origin_equivalent + ".syncdownload"
+        origin_equivalent_sync = origin_equivalent + '.syncdownload'
 
         # --- PROTEÇÃO CONDICIONAL POR DIRETÓRIO ---
         # (já calculado no início da função)
@@ -2146,36 +2422,55 @@ def destination_cleanup(root, dry_run=False):
         # =========================================================
 
         try:
-            origin_equivalent_sync = origin_equivalent + ".syncdownload"
+            origin_equivalent_sync = (
+                origin_equivalent + '.syncdownload'
+            )
 
             if os.path.exists(origin_equivalent_sync):
-                resolved = resolve_syncdownload_cached(origin_equivalent_sync)
+                resolved = resolve_syncdownload_cached(
+                    origin_equivalent_sync
+                )
 
                 if resolved:
-                    expected_name = resolved.get("filename")
+                    expected_name = resolved.get('filename')
 
                     if expected_name:
-                        expected_full = os.path.join(root, expected_name)
+                        expected_full = os.path.join(
+                            root, expected_name
+                        )
 
                         # 🔒 proteção direta (nome resolvido)
-                        if os.path.abspath(dest_full_path) == os.path.abspath(expected_full):
-                            show_message(f"Protegido (.syncdownload resolvido): {item}", "D")
+                        if os.path.abspath(
+                            dest_full_path
+                        ) == os.path.abspath(expected_full):
+                            show_message(
+                                f'Protegido (.syncdownload resolvido): {item}',
+                                'D',
+                            )
                             continue
 
                         # 🔒 proteção por presença do arquivo esperado
                         if os.path.exists(expected_full):
-                            current_base = normalize_product_name(os.path.basename(dest_full_path))
-                            expected_base = normalize_product_name(expected_name)
+                            current_base = normalize_product_name(
+                                os.path.basename(dest_full_path)
+                            )
+                            expected_base = normalize_product_name(
+                                expected_name
+                            )
 
-                            if is_same_product(current_base, expected_base):
-                                show_message(f"Protegido (grupo do .syncdownload): {item}", "D")
+                            if is_same_product(
+                                current_base, expected_base
+                            ):
+                                show_message(
+                                    f'Protegido (grupo do .syncdownload): {item}',
+                                    'D',
+                                )
                                 continue
 
         except Exception:
-            pass        
+            pass
 
         if not os.path.exists(origin_equivalent):
-
             # =========================================================
             # 🔒 PROTEÇÃO GLOBAL: arquivo gerado por QUALQUER .syncdownload
             # =========================================================
@@ -2184,27 +2479,38 @@ def destination_cleanup(root, dry_run=False):
 
                 for root_dir, _, files in os.walk(ORIGIN_PATH):
                     for f in files:
-                        if not f.lower().endswith(".syncdownload"):
+                        if not f.lower().endswith('.syncdownload'):
                             continue
 
                         sync_file = os.path.join(root_dir, f)
 
                         try:
-                            resolved = resolve_syncdownload_cached(sync_file)
+                            resolved = resolve_syncdownload_cached(
+                                sync_file
+                            )
 
                             if not resolved:
                                 continue
 
-                            expected_name = resolved.get("filename")
+                            expected_name = resolved.get('filename')
 
                             if not expected_name:
                                 continue
 
-                            expected_base = normalize_product_name(expected_name)
-                            current_base = normalize_product_name(os.path.basename(dest_full_path))
+                            expected_base = normalize_product_name(
+                                expected_name
+                            )
+                            current_base = normalize_product_name(
+                                os.path.basename(dest_full_path)
+                            )
 
-                            if is_same_product(expected_base, current_base):
-                                show_message(f"Protegido (global .syncdownload): {item}", "D")
+                            if is_same_product(
+                                expected_base, current_base
+                            ):
+                                show_message(
+                                    f'Protegido (global .syncdownload): {item}',
+                                    'D',
+                                )
                                 protected = True
                                 break
 
@@ -2226,32 +2532,36 @@ def destination_cleanup(root, dry_run=False):
             try:
                 destination_cleanup(dest_full_path, dry_run)
             except Exception as e:
-                show_message(f"Erro ao acessar subdiretório {dest_full_path}: {e}", "e")
+                show_message(
+                    f'Erro ao acessar subdiretório {dest_full_path}: {e}',
+                    'e',
+                )
+
 
 def is_cached_file_valid(path, expected_hash):
     if not os.path.exists(path):
         return False
 
     ext = os.path.splitext(path)[1].lower()
-    sha_file = path + ".sha256"
-    sync_file = path + ".syncado"
+    sha_file = path + '.sha256'
+    sync_file = path + '.syncado'
 
     # =========================================================
     # 1. HASH EXTERNO (linha 2) → prioridade máxima
     # =========================================================
     if expected_hash:
-        current_hash = hash_file(path, "Cache")
+        current_hash = hash_file(path, 'Cache')
         return current_hash == expected_hash.lower()
 
     # =========================================================
     # 2. ARQUIVOS DE IMAGEM → USAR SHA256 SE EXISTIR
     # =========================================================
-    if ext in (".iso", ".img") and os.path.exists(sha_file):
+    if ext in ('.iso', '.img') and os.path.exists(sha_file):
         try:
-            with open(sha_file, "r", encoding="utf-8") as f:
+            with open(sha_file, 'r', encoding='utf-8') as f:
                 saved_hash = f.readline().split()[0]
 
-            current_hash = hash_file(path, "Cache")
+            current_hash = hash_file(path, 'Cache')
             return current_hash == saved_hash.lower()
         except:
             return False
@@ -2261,7 +2571,7 @@ def is_cached_file_valid(path, expected_hash):
     # =========================================================
     if os.path.exists(sync_file):
         try:
-            with open(sync_file, "r", encoding="utf-8") as f:
+            with open(sync_file, 'r', encoding='utf-8') as f:
                 stored_name = f.read().strip()
 
             current_name = os.path.basename(path)
@@ -2282,6 +2592,7 @@ def is_cached_file_valid(path, expected_hash):
     # =========================================================
     return os.path.getsize(path) > 0
 
+
 def _normalize_color(color: str):
     """
     Separa estilo e cor base.
@@ -2291,7 +2602,7 @@ def _normalize_color(color: str):
     - 'bright_red' → ('', 'red')
     """
     if not color:
-        return "", "cyan"
+        return '', 'cyan'
 
     parts = color.strip().lower().split()
 
@@ -2299,45 +2610,48 @@ def _normalize_color(color: str):
     base_color = parts[-1]
 
     # remove prefixo bright_ se vier
-    base_color = base_color.replace("bright_", "")
+    base_color = base_color.replace('bright_', '')
 
     # resto vira estilo
-    style = " ".join(parts[:-1])
+    style = ' '.join(parts[:-1])
 
     return style, base_color
 
+
 def get_op_icon(op_type, direction=None):
-    if op_type == "hash":
-        return "🔍⬅" if direction == "source" else "🔍➜"
+    if op_type == 'hash':
+        return '🔍⬅' if direction == 'source' else '🔍➜'
 
-    if op_type == "download":
-        return "⬇⬇"
+    if op_type == 'download':
+        return '⬇⬇'
 
-    if op_type == "copy":
-        return "➜➜"
+    if op_type == 'copy':
+        return '➜➜'
 
-    return "  "  # fallback 2 chars
+    return '  '  # fallback 2 chars
 
-def create_progress(color="cyan"):
+
+def create_progress(color='cyan'):
     style, base_color = _normalize_color(color)
 
     # 🔒 monta estilo completo com reset explícito
-    label_style = f"{style} {base_color}".strip()
+    label_style = f'{style} {base_color}'.strip()
 
     return Progress(
-        TextColumn(f"[{label_style}]{{task.description}}: {{task.fields[name]}}[/]"),
-        
+        TextColumn(
+            f'[{label_style}]{{task.description}}: {{task.fields[name]}}[/]'
+        ),
         BarColumn(
             complete_style=base_color,
-            finished_style=f"bright_{base_color}"
+            finished_style=f'bright_{base_color}',
         ),
-
-        TextColumn("[white]{task.percentage:>3.0f}%[/]"),
+        TextColumn('[white]{task.percentage:>3.0f}%[/]'),
         DownloadColumn(),
         TransferSpeedColumn(),
         TimeRemainingColumn(),
-        transient=True
+        transient=True,
     )
+
 
 def download_file_with_progress(url, dst):
     """
@@ -2352,15 +2666,13 @@ def download_file_with_progress(url, dst):
     req = urllib.request.Request(url)
 
     with http_open(req) as response:
-        total_size = response.headers.get("Content-Length")
-        total_size = int(total_size) if total_size else None        
+        total_size = response.headers.get('Content-Length')
+        total_size = int(total_size) if total_size else None
 
         with open(dst, 'wb') as out_file:
-            with create_progress("cyan") as progress:
+            with create_progress('cyan') as progress:
                 task = progress.add_task(
-                    "",
-                    total=total_size,
-                    name=os.path.basename(dst)
+                    '', total=total_size, name=os.path.basename(dst)
                 )
 
                 last_progress = time.time()
@@ -2380,7 +2692,10 @@ def download_file_with_progress(url, dst):
 
                     # 🔒 timeout por inatividade (não depende do tamanho total)
                     if time.time() - last_progress > READ_TIMEOUT:
-                        raise TimeoutError("Download stalled (no data received)")      
+                        raise TimeoutError(
+                            'Download stalled (no data received)'
+                        )
+
 
 def origin_to_destination(path, retry, dry_run):
     """
@@ -2407,18 +2722,24 @@ def origin_to_destination(path, retry, dry_run):
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
 
             # --- .syncdownload agora é tratado na Etapa 3 ---
-            if path.lower().endswith(".syncdownload"):
+            if path.lower().endswith('.syncdownload'):
                 return
 
             # Lógica simples de cópia (exemplo: se não existe ou hash diferente)
-            if not os.path.exists(dest_path) or hash_file(path, "Origem") != hash_file(dest_path, "Destino"):
-                show_message(f"Copiando: {rel_path}", "+")
+            if not os.path.exists(dest_path) or hash_file(
+                path, 'Origem'
+            ) != hash_file(dest_path, 'Destino'):
+                show_message(f'Copiando: {rel_path}', '+')
                 copy_file_with_progress(path, dest_path)
-    
+
     except OSError as e:
-        show_message(f"Erro no sistema de arquivos em {rel_path}: {e}", "e")
+        show_message(
+            f'Erro no sistema de arquivos em {rel_path}: {e}', 'e'
+        )
         if retry and path not in failed_files:
-            show_message(f"Adicionado para retentativa: {rel_path}", "w")
+            show_message(
+                f'Adicionado para retentativa: {rel_path}', 'w'
+            )
             failed_files.append(path)
 
 
@@ -2427,9 +2748,10 @@ def resolve_if_dsl(value, context=None):
     Resolve valor caso seja expressão DSL (${...})
     Mantém compatibilidade total com strings normais
     """
-    if isinstance(value, str) and "${" in value:
+    if isinstance(value, str) and '${' in value:
         return resolve_parser_expression(value, context_name=context)
     return value
+
 
 def recursive_directory_iteration(root, action, retry, dry_run):
     """
@@ -2445,17 +2767,20 @@ def recursive_directory_iteration(root, action, retry, dry_run):
     try:
         items = os.listdir(root)
     except OSError as e:
-        show_message(f"Erro ao acessar {root}: {e}", "e")
+        show_message(f'Erro ao acessar {root}: {e}', 'e')
         return
 
     for item in items:
         full_path = os.path.join(root, item)
         if re.search(IGNORED_PATHS, full_path, re.IGNORECASE):
             continue
-        
+
         action(full_path, retry, dry_run)
         if os.path.isdir(full_path):
-            recursive_directory_iteration(full_path, action, retry, dry_run)
+            recursive_directory_iteration(
+                full_path, action, retry, dry_run
+            )
+
 
 def apply_root_hidden_attribute():
     """
@@ -2464,14 +2789,14 @@ def apply_root_hidden_attribute():
     - None
     Retorno:
     - None
-    """        
+    """
     try:
         origin_root_items = set(os.listdir(ORIGIN_PATH))
     except Exception as e:
-        show_message(f"Erro ao listar origem (root): {e}", "e")
+        show_message(f'Erro ao listar origem (root): {e}', 'e')
         return
 
-    exceptions = {"NÃO FORMATAR", "Drivers", "apps"}
+    exceptions = {'NÃO FORMATAR', 'Drivers', 'apps'}
 
     for item in os.listdir(destination_path):
         dest_full_path = os.path.join(destination_path, item)
@@ -2486,19 +2811,27 @@ def apply_root_hidden_attribute():
 
         try:
             # Apenas aplica no item (não recursivo)
-            if os.name == "nt":                
+            if os.name == 'nt':
                 FILE_ATTRIBUTE_HIDDEN = 0x02
 
-                attrs = ctypes.windll.kernel32.GetFileAttributesW(dest_full_path)
-                if attrs != -1 and not (attrs & FILE_ATTRIBUTE_HIDDEN):
-                    ctypes.windll.kernel32.SetFileAttributesW(dest_full_path, attrs | FILE_ATTRIBUTE_HIDDEN)
-                    show_message(f"Ocultado: {item}", "d")
+                attrs = ctypes.windll.kernel32.GetFileAttributesW(
+                    dest_full_path
+                )
+                if attrs != -1 and not (
+                    attrs & FILE_ATTRIBUTE_HIDDEN
+                ):
+                    ctypes.windll.kernel32.SetFileAttributesW(
+                        dest_full_path, attrs | FILE_ATTRIBUTE_HIDDEN
+                    )
+                    show_message(f'Ocultado: {item}', 'd')
 
         except Exception as e:
-            show_message(f"Falha ao ocultar {item}: {e}", "e")            
+            show_message(f'Falha ao ocultar {item}: {e}', 'e')
 
 
-def purge_similar_installers_safe(dest_dir, target_name, canonical_name=None):
+def purge_similar_installers_safe(
+    dest_dir, target_name, canonical_name=None
+):
     """
     Descrição: Remove versões antigas de forma segura.
     Parâmetros:
@@ -2506,7 +2839,7 @@ def purge_similar_installers_safe(dest_dir, target_name, canonical_name=None):
     - target_name (str): Arquivo alvo.
     Retorno:
     - None
-    """    
+    """
     target_full = os.path.join(dest_dir, target_name)
 
     if not os.path.exists(target_full):
@@ -2528,8 +2861,8 @@ def purge_similar_installers_safe(dest_dir, target_name, canonical_name=None):
 
     if canonical_name:
         canonical_clean = normalize_canonical_name(canonical_name)
-        if canonical_clean and "-" in canonical_clean:
-            strict_mode = True        
+        if canonical_clean and '-' in canonical_clean:
+            strict_mode = True
 
     candidates = []
 
@@ -2539,7 +2872,9 @@ def purge_similar_installers_safe(dest_dir, target_name, canonical_name=None):
         if not os.path.isfile(full):
             continue
 
-        if f.lower().endswith((".sha256", ".syncado", ".syncdownload")):
+        if f.lower().endswith(
+            ('.sha256', '.syncado', '.syncdownload')
+        ):
             continue
 
         base = normalize_product_name(f)
@@ -2565,7 +2900,7 @@ def purge_similar_installers_safe(dest_dir, target_name, canonical_name=None):
 
         if is_same_product(base, target_base):
             candidates.append(f)
-            
+
     if len(candidates) <= 1:
         return
 
@@ -2586,9 +2921,12 @@ def purge_similar_installers_safe(dest_dir, target_name, canonical_name=None):
         if f not in keep:
             try:
                 os.remove(os.path.join(dest_dir, f))
-                show_message(f"Removido excedente: {f}", "-", cor="yellow")
+                show_message(
+                    f'Removido excedente: {f}', '-', cor='yellow'
+                )
             except Exception as e:
-                show_message(f"Erro ao remover {f}: {e}", "e")                
+                show_message(f'Erro ao remover {f}: {e}', 'e')
+
 
 def process_single_syncdownload(path, dry_run):
     """
@@ -2598,7 +2936,7 @@ def process_single_syncdownload(path, dry_run):
     - dry_run (bool): Simulação.
     Retorno:
     - None
-    """    
+    """
     # =========================================================
     # 🔒 CARREGA SCRIPTS EMBUTIDOS (ANTES DE TUDO)
     # =========================================================
@@ -2606,27 +2944,27 @@ def process_single_syncdownload(path, dry_run):
 
     def run_phase(phase, downloaded_file=None):
         for b in script_blocks:
-            if b["phase"] == phase:
+            if b['phase'] == phase:
                 execute_sync_script(b, path, downloaded_file)
 
     # 🔒 fase preresolve
-    run_phase("preresolve")
+    run_phase('preresolve')
 
     resolved = resolve_download_context(path)
     if not resolved:
         return
 
-    final_url = resolved["final_url"]
-    expected_hash = resolved["expected_hash"]
-    remote_hash_url = resolved.get("remote_hash_url")
-    filename = resolved["filename"]
+    final_url = resolved['final_url']
+    expected_hash = resolved['expected_hash']
+    remote_hash_url = resolved.get('remote_hash_url')
+    filename = resolved['filename']
 
     # 🔒 fase start (default)
-    run_phase("start")
+    run_phase('start')
 
     dest_dir = os.path.join(
         destination_path,
-        os.path.relpath(os.path.dirname(path), ORIGIN_PATH)
+        os.path.relpath(os.path.dirname(path), ORIGIN_PATH),
     )
 
     final_dest_path = os.path.join(dest_dir, filename)
@@ -2634,15 +2972,14 @@ def process_single_syncdownload(path, dry_run):
     # === CACHE NA ORIGEM ===
     origin_cached_path = os.path.join(os.path.dirname(path), filename)
 
-    valid_metadata = False    
+    valid_metadata = False
 
     if os.path.exists(origin_cached_path):
-
         # 🔒 valida presença de metadata CORRETA por tipo
         ext = os.path.splitext(origin_cached_path)[1].lower()
 
-        has_sha = os.path.exists(origin_cached_path + ".sha256")
-        has_syncado = os.path.exists(origin_cached_path + ".syncado")
+        has_sha = os.path.exists(origin_cached_path + '.sha256')
+        has_syncado = os.path.exists(origin_cached_path + '.syncado')
 
         # =========================================================
         # 🔒 NOVA REGRA: HASH DIRETO (linha 2 OU linha 4) SUBSTITUI METADATA
@@ -2651,13 +2988,16 @@ def process_single_syncdownload(path, dry_run):
 
         try:
             if expected_hash:
-                current_hash = hash_file(origin_cached_path, "Cache")
-                if current_hash and current_hash == expected_hash.lower():
+                current_hash = hash_file(origin_cached_path, 'Cache')
+                if (
+                    current_hash
+                    and current_hash == expected_hash.lower()
+                ):
                     hash_override_valid = True
 
             elif remote_hash_url:
                 remote_hash = fetch_remote_hash(remote_hash_url)
-                current_hash = hash_file(origin_cached_path, "Cache")
+                current_hash = hash_file(origin_cached_path, 'Cache')
 
                 if current_hash and current_hash == remote_hash:
                     hash_override_valid = True
@@ -2666,20 +3006,29 @@ def process_single_syncdownload(path, dry_run):
             hash_override_valid = False
 
         if hash_override_valid:
-            show_message(f"Cache válido via hash direto (sem metadata): {filename}", "k")
+            show_message(
+                f'Cache válido via hash direto (sem metadata): {filename}',
+                'k',
+            )
             valid_metadata = True
 
         else:
-            if ext in (".iso", ".img"):
+            if ext in ('.iso', '.img'):
                 if has_sha:
                     valid_metadata = True
                 else:
-                    show_message(f"Cache sem .sha256 → inválido (tratado como inexistente): {filename}", "w")
+                    show_message(
+                        f'Cache sem .sha256 → inválido (tratado como inexistente): {filename}',
+                        'w',
+                    )
             else:
                 if has_syncado:
                     valid_metadata = True
                 else:
-                    show_message(f"Cache sem .syncado → inválido (tratado como inexistente): {filename}", "w")
+                    show_message(
+                        f'Cache sem .syncado → inválido (tratado como inexistente): {filename}',
+                        'w',
+                    )
 
         # =========================================================
         # 🔒 FORÇA REPROCESSAMENTO COMO SE NÃO EXISTISSE
@@ -2687,12 +3036,14 @@ def process_single_syncdownload(path, dry_run):
         if not valid_metadata:
             try:
                 os.remove(origin_cached_path)
-                show_message(f"Cache inválido removido: {filename}", "w")
+                show_message(
+                    f'Cache inválido removido: {filename}', 'w'
+                )
             except Exception:
                 pass
 
             # 🔒 remove qualquer metadata residual
-            for ext_meta in (".sha256", ".syncado"):
+            for ext_meta in ('.sha256', '.syncado'):
                 try:
                     meta_path = origin_cached_path + ext_meta
                     if os.path.exists(meta_path):
@@ -2703,14 +3054,23 @@ def process_single_syncdownload(path, dry_run):
             # =========================================================
             # 🔒 FORÇA DOWNLOAD SEM USAR CACHE (SEM QUEBRAR FLUXO)
             # =========================================================
-            show_message(f"Forçando reprocessamento imediato: {filename}", "i")
+            show_message(
+                f'Forçando reprocessamento imediato: {filename}', 'i'
+            )
 
-            need_download = True      
+            need_download = True
 
             # 🔒 segue fluxo normal (download obrigatório)
         else:
-            if is_cached_file_valid(origin_cached_path, expected_hash) or hash_override_valid:
-                show_message(f"Cache válido na origem: {filename}", "k")
+            if (
+                is_cached_file_valid(
+                    origin_cached_path, expected_hash
+                )
+                or hash_override_valid
+            ):
+                show_message(
+                    f'Cache válido na origem: {filename}', 'k'
+                )
 
                 # =========================================================
                 # 🔒 STATUS DO DESTINO (COM SUPORTE A HASH DIRETO)
@@ -2722,12 +3082,22 @@ def process_single_syncdownload(path, dry_run):
                 if dest_exists:
                     try:
                         if expected_hash:
-                            dest_valid = hash_file(final_dest_path, "Destino") == expected_hash.lower()
+                            dest_valid = (
+                                hash_file(final_dest_path, 'Destino')
+                                == expected_hash.lower()
+                            )
                         elif remote_hash_url:
-                            remote_hash = fetch_remote_hash(remote_hash_url)
-                            dest_valid = hash_file(final_dest_path, "Destino") == remote_hash
+                            remote_hash = fetch_remote_hash(
+                                remote_hash_url
+                            )
+                            dest_valid = (
+                                hash_file(final_dest_path, 'Destino')
+                                == remote_hash
+                            )
                         else:
-                            dest_valid = is_cached_file_valid(final_dest_path, expected_hash)
+                            dest_valid = is_cached_file_valid(
+                                final_dest_path, expected_hash
+                            )
                     except Exception:
                         dest_valid = False
 
@@ -2735,71 +3105,109 @@ def process_single_syncdownload(path, dry_run):
                 # 🔒 REGRA CRÍTICA: BASTA UM DOS DOIS ESTAR VÁLIDO
                 # =========================================================
                 if dest_valid:
-                    show_message(f"Cache válido no destino: {filename}", "k")
-                    show_message(f"Sincronizado (sem ação): {filename}", "d")
-                    show_message(f"Sync completo: {filename}", "s")
+                    show_message(
+                        f'Cache válido no destino: {filename}', 'k'
+                    )
+                    show_message(
+                        f'Sincronizado (sem ação): {filename}', 'd'
+                    )
+                    show_message(f'Sync completo: {filename}', 's')
                     return
 
                 if dest_exists and not dest_valid:
-                    show_message(f"Destino inválido → será sobrescrito via espelhamento: {filename}", "w")
+                    show_message(
+                        f'Destino inválido → será sobrescrito via espelhamento: {filename}',
+                        'w',
+                    )
                 elif not dest_exists:
-                    show_message(f"Destino inexistente → cópia necessária: {filename}", "i")
+                    show_message(
+                        f'Destino inexistente → cópia necessária: {filename}',
+                        'i',
+                    )
 
                 # =========================================================
                 # 🔒 ESPALHAMENTO (SEM DOWNLOAD)
                 # =========================================================
-                show_message(f"Download não necessário (hash já válido): {filename}", "d")
+                show_message(
+                    f'Download não necessário (hash já válido): {filename}',
+                    'd',
+                )
 
                 if not dry_run:
-                    copy_file_with_progress(origin_cached_path, final_dest_path)
+                    copy_file_with_progress(
+                        origin_cached_path, final_dest_path
+                    )
 
                     # 🔒 gera metadata se inexistente
-                    generate_sync_metadata(origin_cached_path, resolved["url"])
+                    generate_sync_metadata(
+                        origin_cached_path, resolved['url']
+                    )
 
-                    for ext_meta in (".sha256", ".syncado"):
+                    for ext_meta in ('.sha256', '.syncado'):
                         src_meta = origin_cached_path + ext_meta
                         dst_meta = final_dest_path + ext_meta
 
                         if os.path.exists(src_meta):
                             try:
-                                copy_file_with_progress(src_meta, dst_meta)
+                                copy_file_with_progress(
+                                    src_meta, dst_meta
+                                )
                             except Exception:
                                 pass
 
-                    show_message(f"Arquivo sincronizado via espelhamento: {filename}", "s")
-                    show_message(f"Sync completo: {filename}", "s")
+                    show_message(
+                        f'Arquivo sincronizado via espelhamento: {filename}',
+                        's',
+                    )
+                    show_message(f'Sync completo: {filename}', 's')
 
                     if os.path.exists(final_dest_path):
                         purge_similar_installers_safe(
                             dest_dir,
                             filename,
-                            canonical_name=resolved.get("custom_filename")
+                            canonical_name=resolved.get(
+                                'custom_filename'
+                            ),
                         )
                 else:
-                    show_message(f"[DRY-RUN] Copiaria do cache: {filename}", "d")
+                    show_message(
+                        f'[DRY-RUN] Copiaria do cache: {filename}',
+                        'd',
+                    )
 
                 return
             else:
-                show_message(f"Cache corrompido na origem → removendo: {filename}", "w")
+                show_message(
+                    f'Cache corrompido na origem → removendo: {filename}',
+                    'w',
+                )
 
                 try:
                     os.remove(origin_cached_path)
-                    show_message(f"Cache removido: {filename}", "w")
+                    show_message(f'Cache removido: {filename}', 'w')
                 except Exception:
                     pass
 
                 # 🔒 remove metadata associada
                 try:
-                    if os.path.exists(origin_cached_path + ".sha256"):
-                        os.remove(origin_cached_path + ".sha256")
-                        show_message(f"Metadado .sha256 do cache removido: {filename}", "w")
+                    if os.path.exists(origin_cached_path + '.sha256'):
+                        os.remove(origin_cached_path + '.sha256')
+                        show_message(
+                            f'Metadado .sha256 do cache removido: {filename}',
+                            'w',
+                        )
                 except Exception:
                     pass
 
                 try:
-                    if os.path.exists(origin_cached_path + ".syncado"):
-                        os.remove(origin_cached_path + ".syncado")
-                        show_message(f"Metadado .syncado do cache removido: {filename}", "w")
+                    if os.path.exists(
+                        origin_cached_path + '.syncado'
+                    ):
+                        os.remove(origin_cached_path + '.syncado')
+                        show_message(
+                            f'Metadado .syncado do cache removido: {filename}',
+                            'w',
+                        )
 
                 except Exception:
                     pass
@@ -2810,8 +3218,8 @@ def process_single_syncdownload(path, dry_run):
     else:
         need_download = manage_sync_metadata(
             final_dest_path=final_dest_path,
-            url=final_url or resolved["url"],
-            expected_hash=expected_hash
+            url=final_url or resolved['url'],
+            expected_hash=expected_hash,
         )
 
     if not need_download:
@@ -2819,7 +3227,9 @@ def process_single_syncdownload(path, dry_run):
 
     # === DRY-RUN: NÃO EXECUTA DOWNLOAD ===
     if dry_run:
-        show_message(f"[DRY-RUN] Baixaria: {filename} ({final_url})", "d")
+        show_message(
+            f'[DRY-RUN] Baixaria: {filename} ({final_url})', 'd'
+        )
         return
 
     # =========================================================
@@ -2829,45 +3239,61 @@ def process_single_syncdownload(path, dry_run):
         cached_path = download_registry[final_url]
 
         if os.path.exists(cached_path):
-            show_message(f"Reuso de download (duplicado): {filename}", "w")
+            show_message(
+                f'Reuso de download (duplicado): {filename}', 'w'
+            )
 
             try:
                 os.makedirs(dest_dir, exist_ok=True)
 
-                if not os.path.exists(final_dest_path) or not is_cached_file_valid(final_dest_path, expected_hash):
-                    copy_file_with_progress(cached_path, final_dest_path)
+                if not os.path.exists(
+                    final_dest_path
+                ) or not is_cached_file_valid(
+                    final_dest_path, expected_hash
+                ):
+                    copy_file_with_progress(
+                        cached_path, final_dest_path
+                    )
 
                 if os.path.exists(final_dest_path):
                     purge_similar_installers_safe(
                         dest_dir,
                         filename,
-                        canonical_name=resolved.get("custom_filename")
+                        canonical_name=resolved.get(
+                            'custom_filename'
+                        ),
                     )
 
                 return
 
             except Exception as e:
-                show_message(f"Falha no reuso de download: {e}", "e")
+                show_message(f'Falha no reuso de download: {e}', 'e')
 
     # === DOWNLOAD (SEMPRE PRIMEIRO PARA CACHE NA ORIGEM) ===
     try:
-        os.makedirs(os.path.dirname(origin_cached_path), exist_ok=True)
+        os.makedirs(
+            os.path.dirname(origin_cached_path), exist_ok=True
+        )
         os.makedirs(dest_dir, exist_ok=True)
 
         # 🔒 download vai SEMPRE para o cache (origem)
         download_file_with_progress(final_url, origin_cached_path)
 
-        show_message(f"Download concluído (cache): {filename}", "+")
+        show_message(f'Download concluído (cache): {filename}', '+')
 
         # 🔒 registra download para reutilização futura (aponta para cache)
         download_registry[final_url] = origin_cached_path
 
         # 🔒 copia do cache → destino (NUNCA download direto no destino)
-        if not os.path.exists(final_dest_path) or not is_cached_file_valid(final_dest_path, expected_hash):
-            copy_file_with_progress(origin_cached_path, final_dest_path)
+        if not os.path.exists(
+            final_dest_path
+        ) or not is_cached_file_valid(final_dest_path, expected_hash):
+            copy_file_with_progress(
+                origin_cached_path, final_dest_path
+            )
 
     except Exception as e:
-        show_message(f"Erro no download: {filename} -> {e}", "e")
+        show_message(f'Erro no download: {filename} -> {e}', 'e')
 
         if path not in failed_files:
             failed_files.append(path)
@@ -2877,28 +3303,39 @@ def process_single_syncdownload(path, dry_run):
     # =========================================================
     # 🔒 PIPELINE .gz (validação + possível descompressão)
     # =========================================================
-    is_gz = final_dest_path.lower().endswith(".gz")
+    is_gz = final_dest_path.lower().endswith('.gz')
 
     validated = False
 
     # 🔒 1. tenta validar o .gz diretamente
     if is_gz:
         if is_cached_file_valid(final_dest_path, expected_hash):
-             # 🔒 .gz é o artefato final válido → NÃO remover
+            # 🔒 .gz é o artefato final válido → NÃO remover
             validated = True
         else:
-            show_message(f".gz não confere hash → tentando conteúdo: {filename}", "w")
+            show_message(
+                f'.gz não confere hash → tentando conteúdo: {filename}',
+                'w',
+            )
 
             try:
                 decompressed_path = final_dest_path[:-3]  # remove .gz
 
-                with gzip.open(final_dest_path, 'rb') as f_in, open(decompressed_path, 'wb') as f_out:
+                with (
+                    gzip.open(final_dest_path, 'rb') as f_in,
+                    open(decompressed_path, 'wb') as f_out,
+                ):
                     shutil.copyfileobj(f_in, f_out)
 
                 # 🔒 valida conteúdo descompactado
-                if is_cached_file_valid(decompressed_path, expected_hash):
-                    show_message(f"Hash válido após descompressão: {filename}", "k")
-                    
+                if is_cached_file_valid(
+                    decompressed_path, expected_hash
+                ):
+                    show_message(
+                        f'Hash válido após descompressão: {filename}',
+                        'k',
+                    )
+
                     try:
                         # 🔒 remove .gz somente após validação do conteúdo
                         os.remove(final_dest_path)
@@ -2913,11 +3350,14 @@ def process_single_syncdownload(path, dry_run):
                     # =========================================================
                     # 🔒 METADATA ESPECIAL (.gz → conteúdo)
                     # =========================================================
-                    try:                        
+                    try:
+
                         def _hash_file(p):
                             h = hashlib.sha256()
-                            with open(p, "rb") as f:
-                                for chunk in iter(lambda: f.read(65536), b""):
+                            with open(p, 'rb') as f:
+                                for chunk in iter(
+                                    lambda: f.read(65536), b''
+                                ):
                                     h.update(chunk)
                             return h.hexdigest()
 
@@ -2931,13 +3371,18 @@ def process_single_syncdownload(path, dry_run):
                             if not os.path.isfile(full):
                                 continue
 
-                            if f.lower().endswith((".sha256", ".syncado", ".gz")):
+                            if f.lower().endswith(
+                                ('.sha256', '.syncado', '.gz')
+                            ):
                                 continue
 
                             candidates.append(full)
 
                         if candidates:
-                            target_file = max(candidates, key=lambda p: os.path.getsize(p))
+                            target_file = max(
+                                candidates,
+                                key=lambda p: os.path.getsize(p),
+                            )
                         else:
                             target_file = final_dest_path
 
@@ -2951,20 +3396,30 @@ def process_single_syncdownload(path, dry_run):
                         if expected_hash:
                             gz_hash = expected_hash.lower()
 
-                        sha_path = target_file + ".sha256"
+                        sha_path = target_file + '.sha256'
 
-                        with open(sha_path, "w", encoding="utf-8") as f:
+                        with open(
+                            sha_path, 'w', encoding='utf-8'
+                        ) as f:
                             # linha 1 → conteúdo real
-                            f.write(f"{extracted_hash}\n")
+                            f.write(f'{extracted_hash}\n')
 
                             # linha 2 → vínculo com .gz (hash original + URL)
                             if gz_hash:
-                                f.write(f"{gz_hash}  {resolved['url']}\n")
+                                f.write(
+                                    f'{gz_hash}  {resolved["url"]}\n'
+                                )
 
                     except Exception as e:
-                        show_message(f"Falha ao gerar .sha256 especial: {e}", "e")                    
+                        show_message(
+                            f'Falha ao gerar .sha256 especial: {e}',
+                            'e',
+                        )
                 else:
-                    show_message(f"Conteúdo descompactado inválido: {filename}", "w")
+                    show_message(
+                        f'Conteúdo descompactado inválido: {filename}',
+                        'w',
+                    )
 
                     try:
                         os.remove(decompressed_path)
@@ -2972,26 +3427,33 @@ def process_single_syncdownload(path, dry_run):
                         pass
 
             except Exception as e:
-                show_message(f"Falha ao descompactar .gz: {e}", "e")
+                show_message(f'Falha ao descompactar .gz: {e}', 'e')
 
     # 🔒 fallback padrão (não gz ou gz válido direto)
     if not validated:
         if not is_cached_file_valid(final_dest_path, expected_hash):
-            show_message(f"Download inválido (hash/tamanho): {filename}", "w")
+            show_message(
+                f'Download inválido (hash/tamanho): {filename}', 'w'
+            )
             try:
                 os.remove(final_dest_path)
             except:
                 pass
             return
-    
+
     # =========================================================
     # 🔒 PADRONIZAÇÃO DE BASENAME (linha 3)
     # =========================================================
-    canonical = resolved.get("custom_filename")
+    canonical = resolved.get('custom_filename')
 
     # 🔒 BLOQUEIO DE PLACEHOLDER NÃO RESOLVIDO
-    if isinstance(canonical, str) and ("{}" in canonical or "{" in canonical):
-        show_message(f"Canonical inválido (placeholder não resolvido): {canonical}", "w")
+    if isinstance(canonical, str) and (
+        '{}' in canonical or '{' in canonical
+    ):
+        show_message(
+            f'Canonical inválido (placeholder não resolvido): {canonical}',
+            'w',
+        )
         canonical = None
 
     if canonical:
@@ -3007,7 +3469,7 @@ def process_single_syncdownload(path, dry_run):
                 final_dest_path = new_path
                 filename = new_name
             except Exception as e:
-                show_message(f"Falha ao padronizar nome: {e}", "e")   
+                show_message(f'Falha ao padronizar nome: {e}', 'e')
 
     # =========================================================
     # 🔒 MULTI-ARQUIVOS (mesmo basename)
@@ -3030,11 +3492,13 @@ def process_single_syncdownload(path, dry_run):
             candidate_path = os.path.join(dest_dir, candidate)
 
             try:
-                if normalize_product_name(f) == normalize_product_name(filename):
+                if normalize_product_name(
+                    f
+                ) == normalize_product_name(filename):
                     if full != candidate_path:
                         os.rename(full, candidate_path)
             except:
-                pass                 
+                pass
 
     # =========================================================
     # 🔒 VALIDAÇÃO OBRIGATÓRIA — HASH REMOTO (linha 4)
@@ -3042,26 +3506,30 @@ def process_single_syncdownload(path, dry_run):
     if remote_hash_url:
         try:
             # 🔒 fase preremotehash
-            run_phase("preremotehash")
-        
+            run_phase('preremotehash')
+
             resolved_hash_input = resolve_if_dsl(
-                remote_hash_url,
-                context="remote_hash_url"
+                remote_hash_url, context='remote_hash_url'
             )
 
             # 🔒 se DSL retornar hash direto → usa direto
-            if isinstance(resolved_hash_input, str) and re.fullmatch(r'[a-fA-F0-9]{64}', resolved_hash_input.strip()):
+            if isinstance(resolved_hash_input, str) and re.fullmatch(
+                r'[a-fA-F0-9]{64}', resolved_hash_input.strip()
+            ):
                 remote_hash = resolved_hash_input.strip().lower()
             else:
                 remote_hash = fetch_remote_hash(resolved_hash_input)
 
             # 🔒 fase posremotehash
-            run_phase("posremotehash")
+            run_phase('posremotehash')
 
-            local_hash = hash_file(final_dest_path, "Destino")
+            local_hash = hash_file(final_dest_path, 'Destino')
 
             if local_hash != remote_hash:
-                show_message(f"Hash remoto divergente → invalidando: {filename}", "w")
+                show_message(
+                    f'Hash remoto divergente → invalidando: {filename}',
+                    'w',
+                )
 
                 # 🔒 remove destino
                 try:
@@ -3077,9 +3545,11 @@ def process_single_syncdownload(path, dry_run):
                     pass
 
                 # 🔒 remove metadata
-                for ext_meta in (".sha256", ".syncado"):
+                for ext_meta in ('.sha256', '.syncado'):
                     try:
-                        if os.path.exists(origin_cached_path + ext_meta):
+                        if os.path.exists(
+                            origin_cached_path + ext_meta
+                        ):
                             os.remove(origin_cached_path + ext_meta)
                     except:
                         pass
@@ -3090,30 +3560,31 @@ def process_single_syncdownload(path, dry_run):
 
                 return
 
-            show_message(f"Hash remoto válido: {filename}", "k")            
+            show_message(f'Hash remoto válido: {filename}', 'k')
 
         except Exception as e:
-            show_message(f"Falha na validação de hash remoto: {e}", "e")
+            show_message(
+                f'Falha na validação de hash remoto: {e}', 'e'
+            )
 
             # 🔒 abort conforme contrato
             if path not in failed_files:
                 failed_files.append(path)
 
-            return    
+            return
 
     # === PURGE CONTROLADO ===
     purge_similar_installers_safe(
         dest_dir,
         filename,
-        canonical_name=resolved.get("custom_filename")
+        canonical_name=resolved.get('custom_filename'),
     )
 
     # =========================================================
     # 🔒 METADATA PRIMEIRO NO CACHE (ORIGEM)
     # =========================================================
     generate_sync_metadata(
-        final_dest_path=origin_cached_path,
-        url=resolved["url"]
+        final_dest_path=origin_cached_path, url=resolved['url']
     )
 
     # =========================================================
@@ -3122,11 +3593,15 @@ def process_single_syncdownload(path, dry_run):
     # === CACHE NA ORIGEM ===
     try:
         # arquivo
-        if not os.path.exists(final_dest_path) or not is_cached_file_valid(final_dest_path, expected_hash):
-            copy_file_with_progress(origin_cached_path, final_dest_path)
+        if not os.path.exists(
+            final_dest_path
+        ) or not is_cached_file_valid(final_dest_path, expected_hash):
+            copy_file_with_progress(
+                origin_cached_path, final_dest_path
+            )
 
         # metadata associada (se existir)
-        for ext_meta in (".sha256", ".syncado"):
+        for ext_meta in ('.sha256', '.syncado'):
             src_meta = origin_cached_path + ext_meta
             dst_meta = final_dest_path + ext_meta
 
@@ -3137,12 +3612,16 @@ def process_single_syncdownload(path, dry_run):
                     pass
 
         # 🔒 fase end (arquivo já disponível)
-        run_phase("end", final_dest_path)
+        run_phase('end', final_dest_path)
 
-        show_message(f"Sync completo: {filename}", "s")
+        show_message(f'Sync completo: {filename}', 's')
 
     except Exception as e:
-        show_message(f"Inconsistência: falha ao propagar cache→destino: {e}", "e")
+        show_message(
+            f'Inconsistência: falha ao propagar cache→destino: {e}',
+            'e',
+        )
+
 
 def process_syncdownloads(root, dry_run):
     """
@@ -3152,10 +3631,10 @@ def process_syncdownloads(root, dry_run):
     - dry_run (bool): Simulação.
     Retorno:
     - None
-    """    
+    """
     for dirpath, _, files in os.walk(root):
         for f in files:
-            if not f.lower().endswith(".syncdownload"):
+            if not f.lower().endswith('.syncdownload'):
                 continue
 
             sync_path = os.path.join(dirpath, f)
@@ -3163,7 +3642,10 @@ def process_syncdownloads(root, dry_run):
             try:
                 process_single_syncdownload(sync_path, dry_run)
             except Exception as e:
-                show_message(f"Erro no .syncdownload {sync_path}: {e}", "e")
+                show_message(
+                    f'Erro no .syncdownload {sync_path}: {e}', 'e'
+                )
+
 
 def main():
     """
@@ -3172,24 +3654,28 @@ def main():
     global destination_path, failed_files, retent_loop_count
 
     if len(sys.argv) < 2:
-        show_message("Uso: python sync.py <caminho_destino> [dry-run]", "e")
+        show_message(
+            'Uso: python sync.py <caminho_destino> [dry-run]', 'e'
+        )
         return
 
     destination_path = os.path.abspath(sys.argv[1])
-    dry_run = "dry-run" in sys.argv
+    dry_run = 'dry-run' in sys.argv
 
     # 1. LIMPEZA
-    show_message("Etapa 1: Iniciando limpeza do destino...", "info")
+    show_message('Etapa 1: Iniciando limpeza do destino...', 'info')
     if os.path.exists(destination_path):
         destination_cleanup(destination_path, dry_run)
 
     # 2. DOWNLOAD PRIMEIRO (corrige dupla escrita)
-    show_message("Etapa 2: Processando .syncdownload...", "info")
+    show_message('Etapa 2: Processando .syncdownload...', 'info')
     process_syncdownloads(ORIGIN_PATH, dry_run)
 
     # 3. CÓPIA DEPOIS
-    show_message("Etapa 3: Iniciando cópia da origem...", "info")
-    recursive_directory_iteration(ORIGIN_PATH, origin_to_destination, True, dry_run)
+    show_message('Etapa 3: Iniciando cópia da origem...', 'info')
+    recursive_directory_iteration(
+        ORIGIN_PATH, origin_to_destination, True, dry_run
+    )
 
     # 4. RETENTATIVA
     MAX_RETRIES = 2
@@ -3197,8 +3683,8 @@ def main():
 
     while failed_files and retry_round <= MAX_RETRIES:
         show_message(
-            f"Etapa 4: Retentativa {retry_round}/{MAX_RETRIES} ({len(failed_files)} arquivos)...",
-            "warn"
+            f'Etapa 4: Retentativa {retry_round}/{MAX_RETRIES} ({len(failed_files)} arquivos)...',
+            'warn',
         )
         retent_loop_count = retry_round
 
@@ -3208,7 +3694,9 @@ def main():
         time.sleep(1)
 
         for path in to_retry:
-            retry_sync(lambda: origin_to_destination(path, False, dry_run))
+            retry_sync(
+                lambda: origin_to_destination(path, False, dry_run)
+            )
 
         # 🔁 mantém consistência: download também pode falhar
         process_syncdownloads(ORIGIN_PATH, dry_run)
@@ -3217,15 +3705,16 @@ def main():
 
     if failed_files:
         show_message(
-            f"Falha definitiva após {MAX_RETRIES} tentativas: {len(failed_files)} arquivos",
-            "e"
+            f'Falha definitiva após {MAX_RETRIES} tentativas: {len(failed_files)} arquivos',
+            'e',
         )
 
     # 5. PÓS-PROCESSAMENTO
-    show_message("Etapa 5: Aplicando ocultação no root...", "info")
+    show_message('Etapa 5: Aplicando ocultação no root...', 'info')
     apply_root_hidden_attribute()
 
-    show_message("Processo concluído.", "s")
+    show_message('Processo concluído.', 's')
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     main()

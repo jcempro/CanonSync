@@ -6,12 +6,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 """
-SYNC ENGINE
+CanonSync - Sync Engine
 PARSER SYNCDOWNLOAD | BIBLIOTECA
 
 ---
-Título: /jcempentools/Sync/
-Descrição: Sync Engine unifies complex synchronization pipelines through: Abstraction (unified API interface), Caching (intelligent reconciliation), Containers (automated selective extraction), and Extensibility (phase-based subscripting).
+Título: CanonSync - Sync Engine
+Descrição: Sync Engine unifies complex synchronization pipelines through:
+           Abstraction (unified API interface), Caching (intelligent
+           reconciliation), Containers (automated selective extraction),
+           and Extensibility (phase-based subscripting).
 Autor: [jcempentools], [JeanCarloEM]
 Contato: [https://github.com/jcempentools/sync/]
 License: MPL 2.0
@@ -36,7 +39,7 @@ Arquitetura SYNC:
 sync/
 │
 ├── main.py                        # Orquestração do pipeline (cleanup → download → cópia → retry → pós)
-├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas 
+├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas
 │                                    entre dois ou mais scripts
 ├── core/
 │   ├── syncdownload.parser.py     # Parsing .syncdownload, resolução de URL e nome determinístico
@@ -111,120 +114,67 @@ Restrições:
 [4] DEFINIÇÕES DESTA BIBLIOTECA (específico deste script)
 =========================================================
 
-
 """
 
 # IMPORTS
-import codecs
-import os
-import random
-import re
-import sys
-from rich.console import Console
-import urllib
-
-# VARIÁVEIS GLOBAIS
-
-__IGNORAR_GITHUB = False
-
-PROVIDERS = {}
-
-# Variável global para o ID da execução
-ID_EXECUCAO = ''.join(random.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(3))
-
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_FILE = os.path.join(SCRIPT_DIR, "sync_local.log")
-MAX_LOG_SIZE = 5 * 1024 * 1024  # 5 MB
-
-# evita falso positivo em arquivos pequenos (boot, configs embutidos, etc.)
-MIN_SIZE_BYTES = 2 * 1024 * 1024  # 2MB
-
-SyncDonwloadExtensions = ["exe", "msi", "iso", "img", "img.gz", "iso.gz"]
-
-retent_loop_count = 0
-
-# Listas de controle
-verifieds = []       # Arquivos/pastas já verificados
-failed_files = []    # Arquivos que falharam na cópia
-
-sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
-sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
-
-# Caminhos
-# 🔒 destino é sempre um root (uma unidade/partition), já origem pode não ser
-destination_path = "?"
-ORIGIN_PATH = os.path.normpath(SCRIPT_DIR).rstrip(os.path.sep) + os.path.sep
-
-# Padrões fixos que a ignorar
-DEFAULT_IGNORED = (
-    r"(\.(git|vscode|trunk|github)(\\|/|$))|"          # Pastas de dev
-    r"(\.(log|tmp|eslintrc\.json|gitattributes|gitignore|prettierrc|prettierignore)$)|" # Extensões/Arquivos
-    r"(API_JSON)$|" # Pastas diversas
-    r"(\.fseventsd$|\.Trashes$|\.Spotlight$|\.AppleDouble$|" # Pastas de sistema    
-    r"\.TemporaryItems$|\$Recycle\.Bin$|Recycler$)"    
+from CanonSync.src.commons import *
+from rich.progress import (
+    BarColumn,
+    DownloadColumn,
+    Progress,
+    TextColumn,
+    TimeRemainingColumn,
+    TransferSpeedColumn,
 )
 
-# Verifica se há argumentos via CLI
-if any(arg.startswith("ignore=") for arg in sys.argv):
-    cli_ignored = '|'.join(
-        re.escape(item) + r"$"
-        for arg in sys.argv
-        if arg.startswith("ignore=")
-        for item in arg.split('=', 1)[1].split(',')
-    )
-    IGNORED_PATHS = f"({DEFAULT_IGNORED}|{cli_ignored})"
-else:
-    IGNORED_PATHS = DEFAULT_IGNORED
-
-# Cache global de normalização
-_product_cache = {}
-
-# Alias canônicos
-PRODUCT_ALIASES = {
-    "7zip": "7z",
-    "7z": "7z",
-    "pwsh": "powershell",
-    "powershell": "powershell",
-}
-
-# Vendors conhecidos (ignorados)
-KNOWN_VENDORS = {
-    "microsoft", "oracle", "google", "adobe", "mozilla",
-    "github", "gitlab"
-}
-
-# Ruídos
-NOISE_TOKENS = {
-    "x86", "x64", "arm32", "amd32", "arm64", "amd64",    
-    "arm", "win", "windows", "linux", "mac",
-    "setup", "installer", "install",
-    "release", "portable",
-    "rc", "beta", "alpha",
-    "msi", "exe", "zip", "live"
-}
+# VARIÁVEIS GLOBAIS
+# (usa commons)
 
 # MAPEAMENTO DE FUNÇÕES
 
-def http_open(url_or_req, timeout=15):
+
+def _normalize_color(color: str):
     """
-    Wrapper centralizado para acesso HTTP.
-
-    Garantias:
-    - Timeout SEMPRE aplicado
-    - Aceita str (URL) ou Request
-    - Não implementa retry (delegado para retry_sync)
-    - Compatível com HEAD/GET via Request
-
-    Parâmetros:
-    - url_or_req (str|Request): URL ou objeto Request.
-    - timeout (int): Timeout em segundos.
-    Retorno:
-    - HTTPResponse: Objeto de resposta.
+    Separa estilo e cor base.
+    Ex:
+    - 'yellow' → ('', 'yellow')
+    - 'bold yellow' → ('bold', 'yellow')
+    - 'bright_red' → ('', 'red')
     """
+    if not color:
+        return '', 'cyan'
 
-    if isinstance(url_or_req, str):
-        req = urllib.request.Request(url_or_req)
-    else:
-        req = url_or_req
+    parts = color.strip().lower().split()
 
-    return urllib.request.urlopen(req, timeout=timeout)
+    # pega última parte como cor
+    base_color = parts[-1]
+
+    # remove prefixo bright_ se vier
+    base_color = base_color.replace('bright_', '')
+
+    # resto vira estilo
+    style = ' '.join(parts[:-1])
+
+    return style, base_color
+
+
+def create_progress(color='cyan'):
+    style, base_color = _normalize_color(color)
+
+    # 🔒 monta estilo completo com reset explícito
+    label_style = f'{style} {base_color}'.strip()
+
+    return Progress(
+        TextColumn(
+            f'[{label_style}]{{task.description}}: {{task.fields[name]}}[/]'
+        ),
+        BarColumn(
+            complete_style=base_color,
+            finished_style=f'bright_{base_color}',
+        ),
+        TextColumn('[white]{task.percentage:>3.0f}%[/]'),
+        DownloadColumn(),
+        TransferSpeedColumn(),
+        TimeRemainingColumn(),
+        transient=True,
+    )

@@ -6,12 +6,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 """
-SYNC ENGINE
+CanonSync - Sync Engine
 PARSER SYNCDOWNLOAD | BIBLIOTECA
 
 ---
-Título: /jcempentools/Sync/
-Descrição: Sync Engine unifies complex synchronization pipelines through: Abstraction (unified API interface), Caching (intelligent reconciliation), Containers (automated selective extraction), and Extensibility (phase-based subscripting).
+Título: CanonSync - Sync Engine
+Descrição: Sync Engine unifies complex synchronization pipelines through:
+           Abstraction (unified API interface), Caching (intelligent
+           reconciliation), Containers (automated selective extraction),
+           and Extensibility (phase-based subscripting).
 Autor: [jcempentools], [JeanCarloEM]
 Contato: [https://github.com/jcempentools/sync/]
 License: MPL 2.0
@@ -36,7 +39,7 @@ Arquitetura SYNC:
 sync/
 │
 ├── main.py                        # Orquestração do pipeline (cleanup → download → cópia → retry → pós)
-├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas 
+├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas
 │                                    entre dois ou mais scripts
 ├── core/
 │   ├── syncdownload.parser.py     # Parsing .syncdownload, resolução de URL e nome determinístico
@@ -116,13 +119,13 @@ Restrições:
 # IMPORTS
 import time
 
-from sync_local.commons import *
-from sync_local.utils.logging import show_message
+from CanonSync.src.commons import *
 
 # VARIÁVEIS GLOBAIS
 # (usa commons)
 
 # MAPEAMENTO DE FUNÇÕES
+
 
 def retry_sync(fn, attempts=3, delay=1):
     """retry_sync(fn, attempts=3, delay=1)
@@ -133,11 +136,11 @@ def retry_sync(fn, attempts=3, delay=1):
     - delay (int): Delay entre tentativas (segundos).
     Retorno:
     - any: Resultado da função executada.
-    """    
+    """
     for i in range(attempts):
         try:
             return fn()
-        except (TimeoutError, ConnectionError) as e:
+        except (TimeoutError, ConnectionError):
             if i == attempts - 1:
                 raise
             time.sleep(delay)

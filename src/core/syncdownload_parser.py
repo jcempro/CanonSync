@@ -6,12 +6,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 """
-SYNC ENGINE
+CanonSync - Sync Engine
 PARSER SYNCDOWNLOAD | BIBLIOTECA
 
 ---
-Título: /jcempentools/Sync/
-Descrição: Sync Engine unifies complex synchronization pipelines through: Abstraction (unified API interface), Caching (intelligent reconciliation), Containers (automated selective extraction), and Extensibility (phase-based subscripting).
+Título: CanonSync - Sync Engine
+Descrição: Sync Engine unifies complex synchronization pipelines through:
+           Abstraction (unified API interface), Caching (intelligent
+           reconciliation), Containers (automated selective extraction),
+           and Extensibility (phase-based subscripting).
 Autor: [jcempentools], [JeanCarloEM]
 Contato: [https://github.com/jcempentools/sync/]
 License: MPL 2.0
@@ -37,7 +40,7 @@ Arquitetura SYNC:
 sync/
 │
 ├── main.py                        # Orquestração do pipeline (cleanup → download → cópia → retry → pós)
-├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas 
+├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas
 │                                    entre dois ou mais scripts
 ├── core/
 │   ├── syncdownload.parser.py     # Parsing .syncdownload, resolução de URL e nome determinístico
@@ -449,7 +452,7 @@ Se um script tentar operar sobre um estado ainda não disponível
 (ex: acessar arquivo antes do download):
 
 → comportamento é indefinido e deve ser tratado como erro do script
-(não do engine)    
+(não do engine)
 
 ---------------------------------------------------------------------
 4.4 RESOLUÇÃO E DECISÃO DE VERSÃO
@@ -521,14 +524,14 @@ Fluxo obrigatório:
     3.1. Se existir linha 5 válida:
         - a linha cinco define um vetor com notação estilo json, que
           define um ou mais aquivos que serão extraídos do container
-            [ 
+            [
                 [
                     "<vetor>" # conforme regras 4.1.A,
                     "<canonico>" # conforme regras da LINHA 3
                 ]
                 ,...
-            ]        
-    
+            ]
+
     3.2. Se não existir linha 5 válida:
         - Identificar arquivos com extensão <sub-ext>
         - Se múltiplos candidatos:
@@ -583,7 +586,7 @@ Regra:
 
 - A referência primária de integridade é SEMPRE o artefato final (<sub-ext>)
 - Hash do container é auxiliar e pode não existir na origem remota
-    
+
 Validação:
 
 - primeiro container
@@ -749,7 +752,7 @@ Restrições:
 
 Assinatura:
 
-    http_open(url_or_req: str | Request, timeout: int = 15) -> HTTPResponse    
+    http_open(url_or_req: str | Request, timeout: int = 15) -> HTTPResponse
     - disponibilizada em ../commons.py
 
 Descrição:
@@ -803,7 +806,7 @@ REGRAS DE USO
 --------------
 
 - HEAD requests:
-    → devem ser feitos via http_open(Request(method="HEAD"))    
+    → devem ser feitos via http_open(Request(method="HEAD"))
 
 - GET simples (conteúdo leve):
     → http_open(url)
@@ -843,21 +846,31 @@ FIM DO CONTRATO
 """
 
 # IMPORTS
-import re
 import json
+import re
 
-from sync_local.commons import *
-from sync_local.utils.dsl import extract_parser_url, has_parser_expression, resolve_parser_expression
-from sync_local.utils.naming import normalize_tokens    
-from sync_local.commons import __IGNORAR_GITHUB
-from sync_local.core.file_operations import resolve_final_filename
-from sync_local.core.download_manager import http_open, show_message
-from sync_local.core.file_operations import resolve_final_url
+from CanonSync.src.commons import *
+from CanonSync.src.commons import __IGNORAR_GITHUB
+from CanonSync.src.core.download_manager import (
+    http_open,
+    show_message,
+)
+from CanonSync.src.core.file_operations import (
+    resolve_final_filename,
+    resolve_final_url,
+)
+from CanonSync.src.utils.dsl import (
+    extract_parser_url,
+    has_parser_expression,
+    resolve_parser_expression,
+)
+from CanonSync.src.utils.naming import normalize_tokens
 
 # VARIÁVEIS GLOBAIS
 
 # Cache de resolução de .syncdownload (pré-processamento)
 sync_resolve_cache = {}
+
 
 # MAPEAMENTO DE FUNÇÕES
 def resolve_syncdownload_cached(sync_path):
@@ -873,19 +886,21 @@ def resolve_syncdownload_cached(sync_path):
     Parâmetros:
     - sync_path (str): Caminho do arquivo.
     Retorno:
-    - dict|None: Dados resolvidos.    
+    - dict|None: Dados resolvidos.
     """
 
     cache_entry = sync_resolve_cache.get(sync_path)
 
     if cache_entry:
-        cached_mtime = cache_entry.get("_mtime")
+        cached_mtime = cache_entry.get('_mtime')
         current_mtime = os.path.getmtime(sync_path)
 
         if cached_mtime == current_mtime:
             return cache_entry
 
-    url, expected_hash, custom_filename, remote_hash_url = parse_syncdownload(sync_path)
+    url, expected_hash, custom_filename, remote_hash_url = (
+        parse_syncdownload(sync_path)
+    )
 
     if not url:
         return None
@@ -893,12 +908,14 @@ def resolve_syncdownload_cached(sync_path):
     spec = None
 
     # --- split spec | url ---
-    if "|" in url:
+    if '|' in url:
         try:
-            left, right = url.split("|", 1)
+            left, right = url.split('|', 1)
             right = right.strip()
 
-            if right.startswith("http://") or right.startswith("https://"):
+            if right.startswith('http://') or right.startswith(
+                'https://'
+            ):
                 spec = left.strip()
                 url = right
         except Exception:
@@ -907,9 +924,13 @@ def resolve_syncdownload_cached(sync_path):
     # --- GitHub ---
     forced_extension = None
 
-    if spec and "github.com" in url.lower() and not __IGNORAR_GITHUB:
-        try:                    
-            parts = [p.strip().lower() for p in spec.split(",") if p.strip()]
+    if spec and 'github.com' in url.lower() and not __IGNORAR_GITHUB:
+        try:
+            parts = [
+                p.strip().lower()
+                for p in spec.split(',')
+                if p.strip()
+            ]
 
             ext = None
             arch = None
@@ -917,35 +938,37 @@ def resolve_syncdownload_cached(sync_path):
             exclude_filters = []
 
             for p in parts:
-                if p.startswith("."):
+                if p.startswith('.'):
                     ext = p[1:]
                     forced_extension = ext
-                elif p in ("x86", "x64", "arm64", "amd64"):
+                elif p in ('x86', 'x64', 'arm64', 'amd64'):
                     arch = p
-                elif p.startswith("!"):
+                elif p.startswith('!'):
                     exclude_filters.append(p[1:])
                 else:
                     include_filters.append(p)
 
             if ext:
-                api_url = url.rstrip('/').replace(
-                    "github.com",
-                    "api.github.com/repos"
-                ) + "/releases/latest"
+                api_url = (
+                    url.rstrip('/').replace(
+                        'github.com', 'api.github.com/repos'
+                    )
+                    + '/releases/latest'
+                )
 
                 with http_open(api_url) as response:
                     data = json.loads(response.read().decode())
 
-                assets = data.get("assets", [])
+                assets = data.get('assets', [])
 
                 candidates = []
 
                 for asset in assets:
-                    name = asset.get("name", "")
+                    name = asset.get('name', '')
                     tokens = normalize_tokens(name)
                     clean = name.lower()
 
-                    if not clean.endswith(f".{ext}"):
+                    if not clean.endswith(f'.{ext}'):
                         continue
 
                     ok = True
@@ -968,8 +991,10 @@ def resolve_syncdownload_cached(sync_path):
                         candidates.append(asset)
 
                 if candidates:
-                    selected = max(candidates, key=lambda a: a.get("size", 0))
-                    url = selected.get("browser_download_url")
+                    selected = max(
+                        candidates, key=lambda a: a.get('size', 0)
+                    )
+                    url = selected.get('browser_download_url')
 
         except Exception:
             pass
@@ -982,21 +1007,22 @@ def resolve_syncdownload_cached(sync_path):
         url=effective_url,
         path=sync_path,
         custom_name=custom_filename,
-        forced_extension=forced_extension
+        forced_extension=forced_extension,
     )
 
     result = {
-        "url": url,
-        "filename": filename,
-        "expected_hash": expected_hash,
-        "remote_hash_url": remote_hash_url,
-        "forced_extension": forced_extension,
-        "custom_filename": custom_filename
+        'url': url,
+        'filename': filename,
+        'expected_hash': expected_hash,
+        'remote_hash_url': remote_hash_url,
+        'forced_extension': forced_extension,
+        'custom_filename': custom_filename,
     }
 
-    result["_mtime"] = os.path.getmtime(sync_path)
+    result['_mtime'] = os.path.getmtime(sync_path)
     sync_resolve_cache[sync_path] = result
-    return result    
+    return result
+
 
 def resolve_download_context(sync_path):
     """
@@ -1005,45 +1031,47 @@ def resolve_download_context(sync_path):
     - sync_path (str): Caminho do .syncdownload.
     Retorno:
     - dict|None: Contexto com URL final e headers.
-    """    
+    """
     resolved = resolve_syncdownload_cached(sync_path)
 
     if not resolved:
         return None
 
     cached = sync_resolve_cache.get(sync_path)
-    if cached and cached.get("final_url"):
-        final_url = cached["final_url"]
-        headers = cached.get("headers", {})
+    if cached and cached.get('final_url'):
+        final_url = cached['final_url']
+        headers = cached.get('headers', {})
     else:
-        final_url, headers = resolve_final_url(resolved["url"])
-        resolved["final_url"] = final_url
-        resolved["headers"] = headers
+        final_url, headers = resolve_final_url(resolved['url'])
+        resolved['final_url'] = final_url
+        resolved['headers'] = headers
 
     return {
         **resolved,
-        "final_url": final_url,
-        "headers": headers,
-    }    
+        'final_url': final_url,
+        'headers': headers,
+    }
 
-def has_resolvable_url(value):    
+
+def has_resolvable_url(value):
     """
     Descrição: Detecta URL direta OU indireta (parser DSL)
     Parâmetros:
     - value (str): Valor contendo URL.
     Retorno:
     - tuple: (tipo, url)
-    """    
+    """
     if not value:
         return False
 
     if has_parser_expression(value):
         return True
 
-    return bool(re.search(r'https?://', value)) 
+    return bool(re.search(r'https?://', value))
+
 
 def resolve_url_source(value):
-    """    
+    """
     Descrição: Identifica tipo e origem da URL, direta ou via parser DSL.
     Parâmetros:
     - value (str): Valor contendo URL.
@@ -1055,13 +1083,14 @@ def resolve_url_source(value):
         return None, None
 
     if has_parser_expression(value):
-        return "parser", extract_parser_url(value)
+        return 'parser', extract_parser_url(value)
 
     m = re.search(r'(https?://[^\s]+)', value)
     if m:
-        return "direct", m.group(1)
+        return 'direct', m.group(1)
 
-    return None, None   
+    return None, None
+
 
 def resolve_provider(url):
     """resolve_provider(url)
@@ -1070,11 +1099,12 @@ def resolve_provider(url):
     - url (str): URL a ser resolvida.
     Retorno:
     - str: URL resolvida ou original.
-    """    
+    """
     for domain, handler in PROVIDERS.items():
         if domain in url:
             return handler(url)
     return url
+
 
 def parse_syncdownload(file_path):
     """
@@ -1083,7 +1113,7 @@ def parse_syncdownload(file_path):
     - file_path (str): Caminho do arquivo.
     Retorno:
     - tuple: (url, expected_hash, custom_name)
-    """    
+    """
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             raw_lines = [l.rstrip('\n') for l in f.readlines()]
@@ -1098,39 +1128,57 @@ def parse_syncdownload(file_path):
         try:
             if has_parser_expression(url):
                 resolved = resolve_parser_expression(
-                    url,
-                    context_name=os.path.basename(file_path)
+                    url, context_name=os.path.basename(file_path)
                 )
 
                 if not isinstance(resolved, str):
-                    raise Exception("Parser DSL não retornou URL válida")
+                    raise Exception(
+                        'Parser DSL não retornou URL válida'
+                    )
 
                 url = resolved
 
         except Exception as e:
-            show_message(f"Erro ao resolver parser DSL: {e}", "e")
+            show_message(f'Erro ao resolver parser DSL: {e}', 'e')
             return None, None, None
 
         # 🔒 GARANTIA: URL final válida
         if not url or not isinstance(url, str):
-            show_message(f"URL inválida no .syncdownload: {file_path}", "e")
+            show_message(
+                f'URL inválida no .syncdownload: {file_path}', 'e'
+            )
             return None, None, None
 
-        if "${" in url:
-            show_message(f"URL inválida após parser: {url}", "e")
+        if '${' in url:
+            show_message(f'URL inválida após parser: {url}', 'e')
             return None, None, None
 
     except Exception as e:
-        show_message(f"Erro ao ler .syncdownload {file_path}: {e}", "e")
+        show_message(
+            f'Erro ao ler .syncdownload {file_path}: {e}', 'e'
+        )
         return None, None, None
 
-    expected_hash = raw_lines[1].strip() if len(raw_lines) > 1 and raw_lines[1].strip() else None
-    custom_name = raw_lines[2].strip() if len(raw_lines) > 2 and raw_lines[2].strip() else None
+    expected_hash = (
+        raw_lines[1].strip()
+        if len(raw_lines) > 1 and raw_lines[1].strip()
+        else None
+    )
+    custom_name = (
+        raw_lines[2].strip()
+        if len(raw_lines) > 2 and raw_lines[2].strip()
+        else None
+    )
 
     # 🔒 linha 4 — hash remoto (NÃO persiste, uso obrigatório em memória)
-    remote_hash_url = raw_lines[3].strip() if len(raw_lines) > 3 and raw_lines[3].strip() else None
+    remote_hash_url = (
+        raw_lines[3].strip()
+        if len(raw_lines) > 3 and raw_lines[3].strip()
+        else None
+    )
 
-    return url, expected_hash, custom_name, remote_hash_url     
+    return url, expected_hash, custom_name, remote_hash_url
+
 
 def parse_syncdownload_scripts(file_path):
     """
@@ -1141,32 +1189,31 @@ def parse_syncdownload_scripts(file_path):
     blocks = []
 
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
         current = None
 
         for line in lines[4:]:  # 🔒 começa após linha 4
-            line = line.rstrip("\n")
+            line = line.rstrip('\n')
 
-            m = re.match(r'^>>>\s*([a-zA-Z0-9]+)(?:\s*,\s*([a-zA-Z0-9]+))?', line)
+            m = re.match(
+                r'^>>>\s*([a-zA-Z0-9]+)(?:\s*,\s*([a-zA-Z0-9]+))?',
+                line,
+            )
 
             if m:
                 if current:
                     blocks.append(current)
 
                 ext = m.group(1)
-                phase = (m.group(2) or "start").lower()
+                phase = (m.group(2) or 'start').lower()
 
-                current = {
-                    "ext": ext,
-                    "phase": phase,
-                    "content": []
-                }
+                current = {'ext': ext, 'phase': phase, 'content': []}
                 continue
 
             if current:
-                current["content"].append(line)
+                current['content'].append(line)
 
         if current:
             blocks.append(current)

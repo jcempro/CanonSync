@@ -6,12 +6,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 """
-SYNC ENGINE
+CanonSync - Sync Engine
 PARSER SYNCDOWNLOAD | BIBLIOTECA
 
 ---
-Título: /jcempentools/Sync/
-Descrição: Sync Engine unifies complex synchronization pipelines through: Abstraction (unified API interface), Caching (intelligent reconciliation), Containers (automated selective extraction), and Extensibility (phase-based subscripting).
+Título: CanonSync - Sync Engine
+Descrição: Sync Engine unifies complex synchronization pipelines through:
+           Abstraction (unified API interface), Caching (intelligent
+           reconciliation), Containers (automated selective extraction),
+           and Extensibility (phase-based subscripting).
 Autor: [jcempentools], [JeanCarloEM]
 Contato: [https://github.com/jcempentools/sync/]
 License: MPL 2.0
@@ -36,7 +39,7 @@ Arquitetura SYNC:
 sync/
 │
 ├── main.py                        # Orquestração do pipeline (cleanup → download → cópia → retry → pós)
-├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas 
+├── commons.py                     # globais: funções, paths, regex, flags, estruturas compartilhas
 │                                    entre dois ou mais scripts
 ├── core/
 │   ├── syncdownload.parser.py     # Parsing .syncdownload, resolução de URL e nome determinístico
@@ -114,112 +117,102 @@ Restrições:
 """
 
 # IMPORTS
-import re
+import os
+import time
+import urllib
 
-from sync_local.commons import *
-from sync_local.commons import _product_cache
+from CanonSync.src.commons import *
+from CanonSync.src.utils.progress import create_progress
 
 # VARIÁVEIS GLOBAIS
 # (usa commons)
 
 # MAPEAMENTO DE FUNÇÕES
 
-def normalize_product_name(filename):
+
+def fetch_remote_hash(remote_hash_url):
     """
-    Descrição: Normaliza nome de produto removendo ruídos e versões:
-    - alias
-    - remoção de vendor
-    - remoção de versão
-    - cache    
+    Extrai hash remoto conforme contrato:
+    - aceita conteúdo bruto
+    - aceita formato "<hash>  filename"
+    - infere tipo por tamanho
+    """
+
+    try:
+        req = urllib.request.Request(remote_hash_url)
+        with http_open(req) as response:
+            content = response.read().decode(errors='ignore')
+
+        # 🔒 extrai primeiro hash válido
+        match = re.search(
+            r'\b([a-fA-F0-9]{32}|[a-fA-F0-9]{64})\b', content
+        )
+
+        if not match:
+            raise Exception('Hash remoto não extraível')
+
+        return match.group(1).lower()
+
+    except Exception as e:
+        raise Exception(f'Falha ao obter hash remoto: {e}')
+
+
+def download_file_with_progress(url, dst):
+    """
+    Descrição: Download de arquivo com progressbar unificada.
     Parâmetros:
-    - filename (str): Nome do arquivo.
+    - url (str): URL do arquivo.
+    - dst (str): Caminho destino.
     Retorno:
-    - str|None: Nome normalizado.
+    - None
     """
 
-    if filename in _product_cache:
-        return _product_cache[filename]
+    req = urllib.request.Request(url)
 
-    name = os.path.basename(filename).lower()
+    with http_open(req) as response:
+        total_size = response.headers.get('Content-Length')
+        total_size = int(total_size) if total_size else None
 
-    # remove extensão
-    name = re.sub(r'\.[a-z0-9]{2,5}$', '', name)
+        with open(dst, 'wb') as out_file:
+            with create_progress('cyan') as progress:
+                task = progress.add_task(
+                    '', total=total_size, name=os.path.basename(dst)
+                )
 
-    tokens = normalize_tokens(name)
+                last_progress = time.time()
+                READ_TIMEOUT = 60  # segundos sem receber dados
 
-    filtered = []
+                while True:
+                    chunk = response.read(65536)
 
-    for t in tokens:
-        if t in NOISE_TOKENS:
-            continue
+                    if chunk:
+                        out_file.write(chunk)
+                        last_progress = time.time()
 
-        if t in KNOWN_VENDORS:
-            continue
+                        if total_size:
+                            progress.update(task, advance=len(chunk))
+                    else:
+                        break
 
-        if re.match(r'^\d+(\.\d+)*$', t):
-            continue
+                    # 🔒 timeout por inatividade (não depende do tamanho total)
+                    if time.time() - last_progress > READ_TIMEOUT:
+                        raise TimeoutError(
+                            'Download stalled (no data received)'
+                        )
 
-        # aplica alias
-        t = PRODUCT_ALIASES.get(t, t)
 
-        filtered.append(t)
-
-    if not filtered:
-        result = None
-    else:
-        # Usa até 2 tokens para melhorar robustez sem quebrar compatibilidade
-        result = ".".join(filtered[:2])
-
-    _product_cache[filename] = result
-    return result
-
-def normalize_canonical_name(name):
+def resolve_final_url(url, timeout=10):
     """
-    Normaliza nome canônico:
-    - remove {}
-    - trim de bordas não alfanuméricas
-    - mantém conteúdo interno intacto
-    """
-    if not name:
-        return None
-
-    name = name.replace("{}", "").strip()
-
-    # trim apenas nas bordas (não destrói estrutura interna)
-    name = re.sub(r'^[^a-zA-Z0-9]+', '', name)
-    name = re.sub(r'[^a-zA-Z0-9]+$', '', name)
-
-    return name or None
-
-def normalize_tokens(s):
-    """
-    Descrição: Tokeniza string em partes normalizadas.
+    Descrição: Resolve URL final após redirect via HEAD.
     Parâmetros:
-    - s (str): String de entrada.
+    - url (str): URL original.
+    - timeout (int): Timeout.
     Retorno:
-    - list[str]: Lista de tokens.
+    - tuple: (url_final, headers)
     """
-    return [t for t in re.split(r'[^a-z0-9]+', s.lower()) if t] 
-
-def is_same_product(a, b):
-    """
-    Descrição: Verifica se dois nomes representam o mesmo produto.
-    Parâmetros:
-    - a (str): Nome A.
-    - b (str): Nome B.
-    Retorno:
-    - bool: True se equivalentes.
-    """    
-    if not a or not b:
-        return False
-
-    # 🔒 Se ambos não possuem separador ".", tratar como canônico rígido
-    if "." not in a and "." not in b:
-        return a.lower() == b.lower()
-
-    ta = set(a.split("."))
-    tb = set(b.split("."))
-
-    intersect = ta & tb
-
-    return len(intersect) >= 1  
+    try:
+        req = urllib.request.Request(url, method='HEAD')
+        with http_open(req, timeout=timeout) as response:
+            return response.geturl(), response.headers
+    except Exception:
+        return None, {}
