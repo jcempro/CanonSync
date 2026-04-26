@@ -1,0 +1,151 @@
+version: 1 # opcional, para controle de versão do formato do arquivo
+  
+source: <url_or_dsl>
+        | {
+          value: <url_or_dsl>,
+          ext?: <string>, # opcional, extensão preferida do arquivo baixado, para validação
+          tags?: <list<string>> # opcional, para categorizar ou filtrar fontes, por exemplo:
+        }
+
+naming:
+  final: <string>
+  canonical: <string>
+
+integrity:
+  # Campos:
+  # - fixed e remote são opcionais
+  # - se ambos existirem, remote TEM precedência absoluta
+
+  fixed: <string|null>  # hash literal (md5|sha1|sha256|...), opcional
+
+  remote:
+    # url | dsl | hash literal
+    <string|null> 
+    |{
+      value: <string> # obrigatório se objeto
+      type?:
+        # default auto - inferida pelo tamanho da string ou
+        # prefixo, ou pela extensão do arquivo, etc
+        "auto" | "sha256" | "sha1" | "md5" 
+    }
+
+integrity: <string> # se for string, é interpretada como remote
+          | {
+              fixed?: <string|null>,  # hash literal (md5|sha1|sha256|...)
+              remote?: <string|null>  # url | dsl | hash literal
+                     |{
+                         value: <string> # obrigatório se objeto
+                         type?:
+                            # default auto - inferida pelo tamanho da string ou
+                            # prefixo, ou pela extensão do arquivo, etc                         
+                            "auto" | "sha256" | "sha1" | "md5"
+                       }
+            }
+
+container:
+  extract:
+    - match: '.+\.iso' # regex match para arquivos a serem extraídos
+      as: 'ubuntu.iso' # nome destino para o arquivo extraído, pode usar
+                       # $1, $2, etc para referenciar grupos de captura
+                       # da regex, incluindo grupos nomeados, por exemplo,
+                       # (?P<name>pattern)
+      on: # opcional, executa scripts para cada etapa
+        # Todo script irá receber parâmetros nomeados (adequado ao
+        # ambiente e linguagem), ao ser executado, por exemplo:
+        # `./script13.sh --syncdownload "<url_or_dsl>" --value <value>
+        # --as "<as>"`
+
+        # Os parâmetros nomeados disponíveis para o script de extração,
+        # além de outros contextuais, podem incluir:
+        # - syncdownload: o full path do arquivo syncdownload.yaml,
+        #   para casos em que o script precise ler ou modificar o
+        #   arquivo de configuração
+        # - value: o valor original do campo `source` ou `remote` que
+        #   resultou no arquivo a ser extraído, por exemplo, a URL ou o
+        #   hash literal
+        # - source: o full path do arquivo container a ser extraído
+        #   (pode ser o valor do source ou o resultado de um download)
+        # - as: o nome destino para o arquivo extraído, conforme
+        #   definido no campo `as`
+        # - match: o regex match que acionou a extração, por exemplo,
+        #   '.+\.iso'
+        # - internalpath: o caminho interno do arquivo dentro do
+        #   container, se aplicável
+
+        - event: posresolve # fase em que a extração deve ocorrer
+                            # (start, posresolve, preinstall,
+                            # postinstall)
+          lang: sh # opcional se run for um path, caso contrário,
+                   # obrigatório - linguagem do comando de extração
+                   # (sh, bat, py, etc)
+
+          run:
+            # Pode ser:
+            # - string única
+            # - lista plana de strings
+
+            # Cada string pode ser:
+            # 1. Referência a script:
+            #    - DEVE iniciar com ":"
+            #    - formato: ":<id>"
+            #
+            # 2. Caminho relativo ou comando inline:
+            #    - qualquer string que NÃO inicie com ":"
+            #
+            # Regras:
+            # - ":" só tem significado especial quando no INÍCIO da
+            #   string
+            # - referências são resolvidas e expandidas (flatten)
+            # - listas devem ser planas (sem aninhamento)
+            # - ordem de execução deve ser preservada
+            <string>
+            | <list<string>>
+
+scripts:
+  # Todo script irá receber parâmetros nomeados (adequado ao ambiente
+  # e linguagem), ao ser executado, por exemplo:
+  # `./script13.sh --syncdownload "<url_or_dsl>" --value <value>
+  # --as "<as>"`
+
+  # Os parâmetros nomeados disponíveis para o script de extração,
+  # além de outros contextuais, podem incluir:
+  # - syncdownload: o full path do arquivo syncdownload.yaml, para
+  #   casos em que o script precise ler ou modificar o arquivo de
+  #   configuração
+  # - value: o valor original do campo `source` ou `remote` que
+  #   resultou no arquivo a ser extraído, por exemplo, a URL ou o
+  #   hash literal
+
+  # O script pode retornar algo que substitua variáveis de ambiente ou
+  # parâmetros para etapas subsequentes, por exemplo, o caminho do
+  # arquivo extraído, ou um hash calculado, etc, incluindo os campos
+  # `match` e `as`. O script deve prever e separar a saída real de
+  # mensagens de log, warn ou erros, por exemplo, usando um formato
+  # específico ou delimitadores.
+
+  - event: posresolve
+    id: <string> # opcional, identificador único global para
+                 # identificar o script em invocações, logs, etc
+    lang: sh # opcional se run for um path, caso contrário,
+             # obrigatório - linguagem do comando de extração
+             # (sh, bat, py, etc)
+
+    run:
+      # Pode ser:
+      # - string única
+      # - lista plana de strings
+
+      # Cada string pode ser:
+      # 1. Referência a script:
+      #    - DEVE iniciar com ":"
+      #    - formato: ":<id>"
+      #
+      # 2. Caminho relativo ou comando inline:
+      #    - qualquer string que NÃO inicie com ":"
+      #
+      # Regras:
+      # - ":" só tem significado especial quando no INÍCIO da string
+      # - referências são resolvidas e expandidas (flatten)
+      # - listas devem ser planas (sem aninhamento)
+      # - ordem de execução deve ser preservada
+      <string>
