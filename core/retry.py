@@ -1,6 +1,21 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
 """
 SYNC ENGINE
 PARSER SYNCDOWNLOAD | BIBLIOTECA
+
+---
+Título: /jcempentools/Sync/
+Descrição: Sync Engine unifies complex synchronization pipelines through: Abstraction (unified API interface), Caching (intelligent reconciliation), Containers (automated selective extraction), and Extensibility (phase-based subscripting).
+Autor: [jcempentools], [JeanCarloEM]
+Contato: [https://github.com/jcempentools/sync/]
+License: MPL 2.0
+---
 
 SUMÁRIO E ESCOPO
 ================
