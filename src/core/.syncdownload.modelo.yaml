@@ -40,8 +40,15 @@ naming:
   final: <string>
   canonical: <string>
 
-# integridade: se for string, é interpretada como remote
 integrity?:
+  # integridade: se for string, é interpretada como `remote`.
+  # NOTA: Refere-se ao hash do arquivo baixado e não deve ser interpretada como  
+  # conferência obrigatória do arquivo existente na origem ou destino. Em casos
+  # de extração, o hash do arquivo final pode diferir do hash do arquivo
+  # baixado (ex: containers compactados). O script deve associar o valor do
+  # campo `integrity` ao arquivo correto — seja ele o baixado ou o final,
+  # conforme o contexto da fase — e correlacionar o hash adequado dos arquivos
+  # finais baseando-se no valor do arquivo .sha256 e de .syncado equivalente.
   <string> 
   | {
   fixed?: <string|null> # hash literal (md5|sha1|sha256|...)
