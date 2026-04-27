@@ -162,7 +162,7 @@ scripts?:
       # - referências são resolvidas e expandidas (flatten)
       # - listas devem ser planas (sem aninhamento)
       # - ordem de execução deve ser preservada
-      # - conteúdo com prefixo "data:;base64," deve ser decodificado antes
+      # - conteúdo com prefixo "data:[tipo/mime];base64," deve ser decodificado antes
       #   da execução
       <string>
       | <list<string>>
