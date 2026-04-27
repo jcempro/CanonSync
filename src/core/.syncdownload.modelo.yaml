@@ -130,7 +130,8 @@ run:
   #    - permitido quando a string contiver múltiplas linhas
   #    - pode ser definido:
   #        a) diretamente no formato YAML (ex: | ou >) ou adequado à linguagem
-  #        b) como conteúdo codificado em base64
+  #        b) como conteúdo codificado em base64, usando o prefixo:
+  #           "data:;base64,<conteúdo>"
   #
   # Regras:
   # - ":" só tem significado especial quando no INÍCIO da string
