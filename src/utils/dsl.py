@@ -74,7 +74,8 @@ Técnicos:
 - Timeout por inatividade + logging rotativo
 
 Execução:
-- Idempotente, determinística, síncrona e ordenada
+- Idempotente, determinística e ordenada
+- Garantia de exeução síncrona ou assincrona predeterminada
 - Decisão incremental (cache + validação)
 - Retry automático (falhas transitórias); abort seguro (inconsistência)
 
