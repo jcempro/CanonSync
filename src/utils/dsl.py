@@ -75,7 +75,7 @@ Técnicos:
 
 Execução:
 - Idempotente, determinística e ordenada
-- Garantia de exeução síncrona ou assincrona predeterminada
+- Garantia de exeução totalmente síncrona ou assincrona predeterminada
 - Decisão incremental (cache + validação)
 - Retry automático (falhas transitórias); abort seguro (inconsistência)
 

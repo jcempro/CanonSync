@@ -75,7 +75,8 @@ Técnicos:
 - Timeout por inatividade + logging rotativo
 
 Execução:
-- Idempotente, determinística, síncrona e ordenada
+- Idempotente, determinística e ordenada
+- Garantia de exeução totalmente síncrona ou assincrona predeterminada
 - Decisão incremental (cache + validação)
 - Retry automático (falhas transitórias); abort seguro (inconsistência)
 
@@ -302,7 +303,7 @@ Para cada bloco:
     argv[2] = nome final (se conhecido)
     argv[3] = path do artefato (se já existente)
 
-5. Aguardar conclusão do processo (execução síncrona)
+5. Aguardar conclusão do processo (execução síncrona/assíncrona predeterminada)
 6. Remover o arquivo temporário
 
 Regras:
@@ -572,11 +573,6 @@ Fluxo obrigatório:
 
     - Persistindo falha:
         → descartar download (rebaixamento)
-
-5. Pós-processamento:
-
-    - Remover container (<ext>)
-    - Manter apenas artefato final (<sub-ext>)
 
 6. Nomeação:
 
