@@ -121,6 +121,9 @@ Synopsis:
     (JSON, YAML, XML), sem parsing heurístico ou scraping. Permite que manifestos definam
     URLs auto-atualizáveis via navegação de objetos.
 
+    Pense num Document.querySelector para APIs: que funcione em JSON/YAML/XML, com suporte a filtros
+    e índices, e que retorne strings (URLs ou metadados) - é isso que esta biblioteca pretende ser.
+
 Description:
     Componente especializado em resolver expressões DSL que navegam por estruturas de dados
     obtidas remotamente, retornando valores como strings (URLs ou metadados).
@@ -153,12 +156,12 @@ Pipeline de Resolução:
     4. CONVERSÃO:
         Retorno obrigatório do valor final como `str` (URL).
     5. ENCADEAMENTO/ANINHAMENTO/PROFUNDIDADE:
-        - Suporte a até `MAX_PROFUNDIDADE` (default 7) e `MAX_ENCADEAMENTOS` (default 3)
+        - Suporte a até `MAX_PROFUNDIDADE` e `MAX_ENCADEAMENTOS`
           níveis de aninhamento de expressões DSL.
         - Timeout por demanda inicial (conjunto total de resoluções aninhadas+encadeadas):
-          `MAX_BUSCA_TIMEOUT` (default 30s).
+          `MAX_BUSCA_TIMEOUT` .
         - Timeout global (todas as resoluções do runtime):
-          `MAX_TIMEOUT_GLOBAL` (default 90s).
+          `MAX_TIMEOUT_GLOBAL`.
 
 Gestão de Cache & Performance:
     - Escopo: Cache em memória persistente na sessão (`__PARSER_CACHE`).
@@ -168,7 +171,7 @@ Gestão de Cache & Performance:
 Restrições Específicas (Hard Rules):
     - VEDAÇÃO: Proibido parsing de HTML ou técnicas de Scraping.
     - VEDAÇÃO: Proibida execução de código arbitrário (bloqueio de `eval`/`exec`).
-    - VEDAÇÃO: Proibido encadeamento de múltiplas expressões DSL (limitar deept em 10).
+    - VEDAÇÃO: Proibido encadeamento de múltiplas expressões DSL (limitar deept em MAX_PROFUNDIDADE).
     - VEDAÇÃO: Operação estritamente de leitura (idempotência HTTP GET).
 
 Fail-Safe & Tratamento de Erros:
@@ -177,11 +180,12 @@ Fail-Safe & Tratamento de Erros:
     - Log: Erros registrados via 'show_message' ou callback de telemetria.
 
 Constants:
-    MAX_PROFUNDIDADE (int): 7
-    MAX_ENCADEAMENTOS (int): 3
-    MAX_BUSCA_TIMEOUT (int): 30  # segundos (conjunto total aninhadas+encadeadas)
-    MAX_TIMEOUT_GLOBAL (int): 90  # segundos
-    CACHE_TTL (int): 60  # segundos
+    - Justáveis para configuração e tuning, sem impacto na lógica de resolução:
+        MAX_PROFUNDIDADE (int);
+        MAX_ENCADEAMENTOS (int);
+        MAX_BUSCA_TIMEOUT (int):  segundos (conjunto total aninhadas+encadeadas)
+        MAX_TIMEOUT_GLOBAL (int): segundos
+        CACHE_TTL (int): segundos
 
 Raises: Nenhuma exceção é propagada externamente. Falhas retornam `None`.
 
