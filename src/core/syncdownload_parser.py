@@ -84,7 +84,7 @@ Execução:
        rigorosa validação de segurança (thread-safety), devendo ser aplicada
        exclusivamente onde não houver dependência de estado entre tarefas.
      * A estratégia preferencial de performance reside no Orquestrador, que pode
-       paralelizar múltiplos DSLs em instâncias distintas, preservando o
+       paralelizar múltiplos Parser em instâncias distintas, preservando o
        determinismo e o isolamento de cada script individual.
 
 - Decisão incremental (cache + validação)
