@@ -133,11 +133,12 @@ run:
   #        b) como conteúdo codificado em base64, usando o prefixo:
   #           "data:;base64,<conteúdo>"
   #
-  # Regras:
+    # Regras:
   # - ":" só tem significado especial quando no INÍCIO da string
   # - referências são resolvidas e expandidas (flatten)
   # - listas devem ser planas (sem aninhamento)
   # - ordem de execução deve ser preservada
-  # - conteúdo base64 deve ser decodificado antes da execução
+  # - conteúdo com prefixo "data:;base64," deve ser decodificado antes
+  #   da execução
   <string>
   | <list<string>>
