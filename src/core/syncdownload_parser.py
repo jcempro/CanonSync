@@ -222,8 +222,18 @@ Persistência:
 
 LINHA 5 — TRATAMENTO de ARQUIVOS INSERIDOS EM CONTAINERS
 
-- A linha cinco define um vetor com notação estilo json, que
-  define um ou mais aquivos que serão extraídos do container
+- A linha cinco define um vetor com notação estilo JSON, que
+  especifica um ou mais arquivos a serem extraídos do container,
+  bem como seus nomes canônicos finais
+
+- Cada item definido nesta linha passa a ser considerado
+  um ARTEFATO FINAL independente
+
+- Para cada arquivo:
+    - deve ser calculado hash SHA256
+    - este hash NÃO deve ser persistido em .sha256/.md5
+    - deve ser persistido exclusivamente no .syncado,
+      conforme regra de METADATA
 
     >> VIDE item 3 de "4.5 PIPELINE DE DOWNLOAD".
 
@@ -521,16 +531,26 @@ Fluxo obrigatório:
 
 3. Seleção do artefato:
 
-    3.1. Se existir linha 5 válida:
-        - a linha cinco define um vetor com notação estilo json, que
-          define um ou mais aquivos que serão extraídos do container
+3.1. Se existir linha 5 válida:
+    - a linha cinco define um vetor com notação estilo JSON, que
+      define um ou mais arquivos que serão extraídos do container
+        [
             [
-                [
-                    "<vetor>" # conforme regras 4.1.A,
-                    "<canonico>" # conforme regras da LINHA 3
-                ]
-                ,...
-            ]
+                "<vetor>",     # conforme regras 4.1.A
+                "<canonico>"   # conforme regras da LINHA 3
+            ],
+            ...
+        ]
+
+    - Para cada arquivo extraído:
+        - calcular SHA256 do conteúdo final (<sub-ext>)
+        - tratar cada item como artefato final independente
+
+    - Persistência de integridade:
+        - NÃO registrar estes hashes em .sha256/.md5
+        - Registrar exclusivamente no .syncado (linha 2),
+          no formato JSON:
+            "<canonico>": "<sha256>"
 
     3.2. Se não existir linha 5 válida:
         - Identificar arquivos com extensão <sub-ext>
@@ -586,6 +606,23 @@ Regra:
 
 - A referência primária de integridade é SEMPRE o artefato final (<sub-ext>)
 - Hash do container é auxiliar e pode não existir na origem remota
+
+REGRA ADICIONAL (OBRIGATÓRIA):
+
+- Hashes de arquivos extraídos do container (definidos na linha 5)
+  NÃO devem ser persistidos no arquivo .sha256/.md5
+
+- Estes hashes DEVEM ser persistidos exclusivamente no arquivo .syncado,
+  a partir da linha 2, no formato JSON, indexado por nome:
+
+    {
+        "<filename>": "<sha256>",
+        ...
+    }
+
+- O hash utilizado neste mapeamento é SEMPRE SHA256
+- A linha 1 do .syncado permanece inalterada (formato padrão "<hash>␠␠<filename>")
+- A linha 2 passa a conter o JSON descrito acima
 
 Validação:
 
