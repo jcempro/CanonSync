@@ -76,8 +76,15 @@ Técnicos:
 Execução:
 - Idempotente, determinística e ordenada
 - Garantia de exeução totalmente síncrona ou assincrona predeterminada
-- Decisão incremental (cache + validação)
-- Retry automático (falhas transitórias); abort seguro (inconsistência)
+  >> Atomicidade com Flexibilidade Controlada
+     * Por padrão, o processo é tratado como um bloco síncrono e indivisível para
+       eliminar lacunas de etapa e garantir a integridade lógica do sistema.
+     * A assincronia interna é permitida apenas em caráter excepcional e sob
+       rigorosa validação de segurança (thread-safety), devendo ser aplicada
+       exclusivamente onde não houver dependência de estado entre tarefas.
+     * A estratégia preferencial de performance reside no Orquestrador, que pode
+       paralelizar múltiplos DSLs em instâncias distintas, preservando o
+       determinismo e o isolamento de cada script individual.
 
 UX:
 - Progressbar inline, sem flooding
