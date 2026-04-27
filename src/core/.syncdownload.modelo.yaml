@@ -120,32 +120,32 @@ scripts?:
              # obrigatório - linguagem do comando de extração
              # (sh, bat, py, etc)
 
-run:
-  # Pode ser:
-  # - string única
-  # - lista plana de strings
-  #
-  # Cada string pode ser:
-  # 1. Referência a script:
-  #    - DEVE iniciar com ":"
-  #    - formato: ":<id>"
-  #
-  # 2. Caminho relativo ou comando inline:
-  #    - qualquer string que NÃO inicie com ":"
-  #
-  # 3. Código inline multilinha:
-  #    - permitido quando a string contiver múltiplas linhas
-  #    - pode ser definido:
-  #        a) diretamente no formato YAML (ex: | ou >) ou adequado à linguagem
-  #        b) como conteúdo codificado em base64, usando o prefixo:
-  #           "data:;base64,<conteúdo>"
-  #
-    # Regras:
-  # - ":" só tem significado especial quando no INÍCIO da string
-  # - referências são resolvidas e expandidas (flatten)
-  # - listas devem ser planas (sem aninhamento)
-  # - ordem de execução deve ser preservada
-  # - conteúdo com prefixo "data:;base64," deve ser decodificado antes
-  #   da execução
-  <string>
-  | <list<string>>
+    run:
+      # Pode ser:
+      # - string única
+      # - lista plana de strings
+      #
+      # Cada string pode ser:
+      # 1. Referência a script:
+      #    - DEVE iniciar com ":"
+      #    - formato: ":<id>"
+      #
+      # 2. Caminho relativo ou comando inline:
+      #    - qualquer string que NÃO inicie com ":"
+      #
+      # 3. Código inline multilinha:
+      #    - permitido quando a string contiver múltiplas linhas
+      #    - pode ser definido:
+      #        a) diretamente no formato YAML (ex: | ou >) ou adequado à linguagem
+      #        b) como conteúdo codificado em base64, usando o prefixo:
+      #           "data:;base64,<conteúdo>"
+      #
+        # Regras:
+      # - ":" só tem significado especial quando no INÍCIO da string
+      # - referências são resolvidas e expandidas (flatten)
+      # - listas devem ser planas (sem aninhamento)
+      # - ordem de execução deve ser preservada
+      # - conteúdo com prefixo "data:;base64," deve ser decodificado antes
+      #   da execução
+      <string>
+      | <list<string>>
