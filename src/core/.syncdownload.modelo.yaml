@@ -3,8 +3,8 @@ version: 1 # opcional, para controle de versão do formato do arquivo
 source: <url_or_dsl>
         | {
           value: <url_or_dsl>,
-          ext?: <string>, # opcional, extensão preferida do arquivo baixado, para validação
-          tags?: <list<string>> # opcional, para categorizar ou filtrar fontes, por exemplo:
+          ext?: <string>, # opcional, extensão para filtrar fontes
+          tags?: <list<string>> # opcional, para filtrar fontes
         }
 
 on?:
