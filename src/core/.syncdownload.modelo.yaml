@@ -8,33 +8,26 @@ source: <url_or_dsl>
         }
 
 on?:
-  - event: <string> # fase em que o eventos deve ser disparado
-                      # (start, posresolve, preinstall,...)                      
-    lang: <string> # opcional se run for um path, caso contrário,
-              # obrigatório - linguagem do comando/script
-              # (sh, bat, py, etc)
+  
+  event: 
+    # herda todos os campos do modelo `id` de `scripts`
 
-    run:
-      # Pode ser:
-      # - string única
-      # - lista plana de strings
-
-      # Cada string pode ser:
-      # 1. Referência a id de script:
-      #    - DEVE iniciar com ":"
-      #    - formato: ":<id>"
-      #
-      # 2. Caminho relativo ou comando inline:
-      #    - qualquer string que NÃO inicie com ":"
-      #
-      # Regras:
-      # - ":" só tem significado especial quando no INÍCIO da
-      #   string
-      # - referências são resolvidas e expandidas (flatten)
-      # - listas devem ser planas (sem aninhamento)
-      # - ordem de execução deve ser preservada
-      <string>
-      | <list<string>>
+    # fase/evento que disparou a execução do script.
+    #
+    # - 'preresolvecanonical': antes de iniciar o processo de resolução canônica, para preparar o ambiente, validar condições, etc
+    # - 'posresolvecanonical': antes de iniciar o processo de resolução canônica, para preparar o ambiente, validar condições, etc
+    # - 'preresolvefinalpath': antes de resolver o caminho final, para ações de limpeza, validação, etc
+    # - 'posresolvefinalpath': após resolver o caminho final, para ações de limpeza, validação, etc
+    # - 'preresolveurl': antes de resolver a url, para preparar o ambiente, validar condições, etc
+    # - 'posresolveurl': após resolver a url, para ações de limpeza, valida
+    # - 'premetacheck': antes de iniciar o processo de identificação do arquivo a ser verificadobaixado, para preparar o ambiente, validar condições, etc
+    #     * parametros fornecidos para o script:
+    #       - `asline`, `matchline`, `containerpath`    
+    # - 'premetagen': antes de iniciar a metageração, para configurar parâmetros, validar o ambiente, etc
+    #       - `asline`, `matchline`, `containerpath`, as, match, internalpath, finalpath
+    # - 'posmetagen': antes de iniciar a metageração, para configurar parâmetros, validar o ambiente, etc
+    #       - `asline`, `matchline`, `containerpath`, as, match, internalpath, finalpath    
+    <string> # fase em que o evento deve ser disparado                      
       
 naming:
   final: <string>
@@ -62,34 +55,58 @@ integrity?:
       }
   }
 
-container?:
-  extract?:
-    - match: '.+\.iso' # regex match para arquivos a serem extraídos
-      as: 'ubuntu.iso' # nome destino para o arquivo extraído, pode usar
-                       # $1, $2, etc para referenciar grupos de captura
-                       # da regex, incluindo grupos nomeados, por exemplo,
-                       # (?P<name>pattern)
+container?:  
+  - match: '.+\.iso' # regex match para arquivos a serem extraídos
+    as: 'ubuntu.iso' # nome destino para o arquivo extraído, pode usar
+                      # $1, $2, etc para referenciar grupos de captura
+                      # da regex, incluindo grupos nomeados, por exemplo,
+                      # (?P<name>pattern)
 
-      on?: # Segue o modelo especificado dentro do campo `on` do root. Mas
-          # é específico para o início o processo de extração do arquivo           
-          # que corresponde ao match, ou seja, pode ser diferente para
-          # cada arquivo a ser extraído, por exemplo, para calcular um hash
-          # específico para cada arquivo, etc. Herda os demais parâmetros
-          # do modelo especificado dentro do campo `on` do root.
+    on?: # Segue o modelo especificado dentro do campo `on` do root. Mas
+        # é específico para o início o processo de extração do arquivo           
+        # que corresponde ao match, ou seja, pode ser diferente para
+        # cada arquivo a ser extraído, por exemplo, para calcular um hash
+        # específico para cada arquivo, etc. Herda os demais parâmetros
+        # do modelo especificado dentro do campo `on` do root.
 
-        # Além dos parâmetros padrão passados, incluídos
-        # especificados na sessão `scripts`, os desta sessão, podem incluir:
-        # - as: o nome destino para o arquivo extraído, conforme
-        #   definido no campo `as`
-        # - match: o regex match que acionou a extração, por exemplo,
-        #   '.+\.iso'
-        # - internalpath: o caminho interno do arquivo dentro do
-        #   container, se aplicável
+      # Além dos parâmetros padrão passados, incluídos
+      # especificados na sessão `scripts`, os desta sessão, podem incluir:
+      # - containerpath : o full path do arquivo container
+      # - as: o nome resolvine destino para o arquivo extraído, conforme
+      #   definido no campo `as` - se já resolvido
+      # - match: o regex match (resolvido) que acionou a extração, por exemplo,
+      #   '.+\.iso' - se já resolvido
+      # - internalpath: o caminho interno do arquivo dentro do
+      #   container, se já resolvido, por exemplo, 'ubuntu.iso' ou 'path/to/ubuntu.iso'
+      # - asline: o campo `line` extamente como está na linha, ou seja, sem resolução de variáveis ou regex, etc
+      # - matchline: o campo `match` extamente como está na linha, ou seja, sem resolução de variáveis ou regex, etc
+      #   '.+\.iso' - se já resolvido 
+      # - finalpath: caminho completo do arquivo extraído
 
-        - event: 
-            # fase/evento que disparou o script. Para extração, 
-            #eventos típicos podem ser:
-            <string>          
+      - event: 
+          # fase/evento que disparou o script. Para extração, 
+          # eventos típicos podem ser:
+          #
+          # - 'premetacheck': antes de iniciar o processo de identificação do arquivo a ser extraído, para preparar o ambiente, validar condições, etc
+          #     * parametros fornecidos para o script:
+          #       - `asline`, `matchline`, `containerpath`
+          # - 'prematch': antes de fazer o match, para preparar o ambiente, validar condições, etc
+          #     * parametros fornecidos para o script:
+          #       - `asline`, `matchline`, `containerpath`
+          # - 'postmatch': após o match, para realizar ações específicas com base no arquivo identificado, como calcular hashes, mover arquivos, etc
+          #     * parametros fornecidos para o script:
+          #       - `asline`, `matchline`, `containerpath`, as, match, internalpath
+          # - 'preextract': antes de iniciar a extração, para configurar parâmetros, validar o ambiente, etc
+          #     * parametros fornecidos para o script:
+          #       - `asline`, `matchline`, `containerpath`, as, match, internalpath            
+          # - 'postextract': após a extração, para ações de limpeza, validação, etc 
+          #     * parametros fornecidos para o script:
+          #       - `asline`, `matchline`, `containerpath`, as, match, internalpath, finalpath
+          # - 'premetagen': antes de iniciar a metageração, para configurar parâmetros, validar o ambiente, etc
+          #       - `asline`, `matchline`, `containerpath`, as, match, internalpath, finalpath
+          # - 'posmetagen': antes de iniciar a metageração, para configurar parâmetros, validar o ambiente, etc
+          #       - `asline`, `matchline`, `containerpath`, as, match, internalpath, finalpath
+          <string>          
 
 scripts?:
   # Todo script irá receber parâmetros nomeados (adequado ao ambiente
@@ -113,12 +130,12 @@ scripts?:
   # mensagens de log, warn ou erros, por exemplo, usando um formato
   # específico ou delimitadores.
 
-  - event: posresolve
-    id?: <string> # opcional, identificador único global para
+  - id: <string|null> # identificador único global para
                   # identificar o script em invocações, logs, etc
-    lang: sh # opcional se run for um path, caso contrário,
-             # obrigatório - linguagem do comando de extração
-             # (sh, bat, py, etc)
+    lang: <string|null> # opcional se run for um path/base64 (base64 
+                        # contem extensão embudida na definição),
+                        # caso contrário, obrigatório - linguagem do
+                        # comando de extração (sh, bat, py, etc)
 
     run:
       # Pode ser:
@@ -140,7 +157,7 @@ scripts?:
       #        b) como conteúdo codificado em base64, usando o prefixo:
       #           "data:;base64,<conteúdo>"
       #
-        # Regras:
+      # Regras:
       # - ":" só tem significado especial quando no INÍCIO da string
       # - referências são resolvidas e expandidas (flatten)
       # - listas devem ser planas (sem aninhamento)
